@@ -613,6 +613,30 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
             for (i=0;i<psr[p].nTelDZ;i++)
                 printf("%.2f %.10g %.10g\n",psr[p].telDZ_t[i],psr[p].telDZ_v[i],psr[p].telDZ_e[i]);
         }
+
+        for (int ishape = 0; ishape < psr[p].nTNShapeletEvents; ++ishape) {
+            printf("TNShapeletEvent %d %lg %lg %lg ",
+                    psr[p].TNShapeletEvN[ishape],
+                    psr[p].TNShapeletEvPos[ishape],
+                    psr[p].TNShapeletEvWidth[ishape],
+                    psr[p].TNShapeletEvFScale[ishape]);
+            if (psr[p].TNShapeletEvFitFlag[ishape]) {
+                printf("\n");
+                for (int icoef =0; icoef < psr[p].TNShapeletEvN[ishape]; ++icoef) {
+                    printf("     %lg %lg Y\n",psr[p].TNShapeletEvCoef[ishape][icoef],
+                            psr[p].TNShapeletEvCoefErr[ishape][icoef]);
+                }
+            } else {
+                for (int icoef =0; icoef < psr[p].TNShapeletEvN[ishape]; ++icoef) {
+                printf("%lg ",psr[p].TNShapeletEvCoef[ishape][icoef]);
+                }
+                printf("\n");
+            }
+            printf("\n");
+        }
+
+
+
         if (psr[p].param[param_quad_ifunc_p].paramSet[0]==1)
         {
             FILE *fout;
@@ -1404,9 +1428,9 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                 {
                     sscanf(psr[p].fdjumpStr[i],"%s %s %s %s %s",str1,str2,str3,str4,str5);
                     if (strcasecmp(str1,"FREQ")==0 || strcasecmp(str1,"MJD")==0)
-		      fprintf(fout2,"FDJUMP%d %s %s %s %.14g %d\n",i,str1,str2,str3,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
+		      fprintf(fout2,"FDJUMP%d %s %s %s %.14g %d\n",psr[p].fdjumpIdx[i],str1,str2,str3,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
                     else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
-		      fprintf(fout2,"FDJUMP%d %s %s %.14g %d\n",i,str1,str2,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
+		      fprintf(fout2,"FDJUMP%d %s %s %.14g %d\n",psr[p].fdjumpIdx[i],str1,str2,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
                 }	  
                 /* Add T2EFAC / T2EQUAD */
                 for (i=0;i<psr[p].nT2efac;i++)
@@ -1522,6 +1546,18 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                 if (psr[p].TNsubtractChrom == 1){
                     fprintf(fout2,"TNsubtractChrom 1\n");
 
+                }
+
+                for (int ishape = 0; ishape < psr[p].nTNShapeletEvents; ++ishape) {
+                    fprintf(fout2,"TNShapeletEvent %d %lg %lg %lg ",
+                            psr[p].TNShapeletEvN[ishape],
+                            psr[p].TNShapeletEvPos[ishape],
+                            psr[p].TNShapeletEvWidth[ishape],
+                            psr[p].TNShapeletEvFScale[ishape]);
+                    for (int icoef =0; icoef < psr[p].TNShapeletEvN[ishape]; ++icoef) {
+                        fprintf(fout2,"%lg ",psr[p].TNShapeletEvCoef[ishape][icoef]);
+                    }
+                    fprintf(fout2,"%d\n",psr[p].TNShapeletEvFitFlag[ishape]);
                 }
 
 

@@ -50,8 +50,8 @@
 
 
 #define TEMPO2_h_HASH "$Id$"
-#define TEMPO2_h_VER "2022.05.1"
-#define TEMPO2_h_MAJOR_VER 2022.05
+#define TEMPO2_h_VER "2023.05.1"
+#define TEMPO2_h_MAJOR_VER 2023.05
 #define TEMPO2_h_MINOR_VER 1
 #define TSUN longdouble(4.925490947e-6) /*!< Solar constant for mass calculations. */
 #define MAX_FREQ_DERIVATIVES 13    /*!< F0 -> Fn   where n=10                            */
@@ -85,7 +85,8 @@
 #define MAX_TNBN        50 /*maximum number of TNBandNoise parameters allowd*/
 #define MAX_TNECORR       50    /*!< Maximum number of TNECORRss allowed               */
 #define MAX_TNSECORR       50    /*!< Maximum number of TNECORRss allowed               */
-#define MAX_TNDMEv		   10    /*Maximum number of TNDMEvents allowed */
+#define MAX_TNDMEv         10    /*Maximum number of TNDMEvents allowed */
+#define MAX_TNShapeCoef 10   /* Max number of shape coefs*/
 #define MAX_TNSQ          50    /*!< Maximum number of TNEQUADs allowed               */
 #define MAX_BPJ_JUMPS        5     /*!< Maximum number of jumps in binary params - for BPJ model */
 #define MAX_TOFFSET          10    /*!< Number of time jumps allowed in .par file        */
@@ -849,6 +850,9 @@ typedef struct pulsar {
     double TNShapeletEvPos[MAX_TNDMEv];  //central position
     double TNShapeletEvWidth[MAX_TNDMEv];  //Overall Width 
     double TNShapeletEvFScale[MAX_TNDMEv];  //Scaling dependence with observational frequency
+    double TNShapeletEvCoef[MAX_TNDMEv][MAX_TNShapeCoef];  // TN Shapelet Coeficient values
+    double TNShapeletEvCoefErr[MAX_TNDMEv][MAX_TNShapeCoef];  // TN Shapelet Coeficient errors if fitted
+    int TNShapeletEvFitFlag[MAX_TNDMEv];
 
 
   

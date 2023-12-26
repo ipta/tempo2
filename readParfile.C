@@ -439,7 +439,11 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         if (strcasecmp(str,"PMLAMBDA")==0 || strcasecmp(str,"PMELONG")==0) {
             if ( (psr->param[param_raj].paramSet[0] || psr->param[param_decj].paramSet[0] ) 
                     || (psr->eclCoord==0 && (psr->param[param_pmra].paramSet[0] || psr->param[param_pmdec].paramSet[0])) ) {
+                logmsg("ra_set=%d dec_set=%d ecl=%d pmra_set=%d pmdec_set=%d",
+                        psr->param[param_raj].paramSet[0], psr->param[param_decj].paramSet[0], psr->eclCoord==0,
+                        psr->param[param_pmra].paramSet[0], psr->param[param_pmdec].paramSet[0]);
                 logerr("Cannot mix ecliptic and equatorial coordinates %s",psr->name);
+
                 exit(1);
             }
             psr->eclCoord = 1;
@@ -1811,8 +1815,32 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 &psr->TNShapeletEvPos[nTNEv],
                 &psr->TNShapeletEvWidth[nTNEv],
                 &psr->TNShapeletEvFScale[nTNEv]);
+        if (psr->TNShapeletEvN[nTNEv] > MAX_TNShapeCoef) {
+            logerr("Max number of Shapelet coefs is %d",MAX_TNShapeCoef);
+            psr->TNShapeletEvN[nTNEv]=MAX_TNShapeCoef;
+        }
+        for (int icoef=0 ; icoef < psr->TNShapeletEvN[nTNEv]; ++icoef) {
+            int read = fscanf(fin, "%lf", &psr->TNShapeletEvCoef[nTNEv][icoef]);
+            if (read != 1) {
+                logwarn("Couldn't read Shape coef for shape %d coef=%d; setting coefs to zero.",nTNEv,icoef);
+                break;
+            }
+        }
+        int shapefitflag=0;
+        int read = fscanf(fin, "%d", &shapefitflag);
+        if (read == 1) {
+            psr->TNShapeletEvFitFlag[nTNEv]=shapefitflag;
+        }
 
-        ( psr->nTNShapeletEvents )++;
+        if (!(psr->TNShapeletEvFScale[nTNEv] == 0 || psr->TNShapeletEvFScale[nTNEv] == 2)) {
+            // If we don't have Red or DM, currently unsupported since temponest doesn't support
+            // it so we don't really know how to interpret the parameters...
+            // Not really a clear way to guess either since it is different for Red and DM
+            logerr("Currently only can handle shapelets with freq scale 2.0 (DM) or 0.0 (red)");
+            exit(1);
+        }
+
+        ++(psr->nTNShapeletEvents);
     }
 
     /* ----------------- */

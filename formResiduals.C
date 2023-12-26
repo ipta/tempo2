@@ -34,6 +34,7 @@
 #include "tempo2.h"
 #include "GWsim.h"
 #include "ifunc.h"
+#include "shapelet.h"
 #include <vector>
 #include <algorithm>
 /* Form the timing residuals from the timing model and the barycentric arrival times */
@@ -114,25 +115,26 @@ void averageDMResiduals(pulsar *psr, int npsr){
                 }
 
                 double freq=psr[0].obsn[o].freq;
-		
-		double resid=(double)psr[0].obsn[o].residual;
-		//double residDM=0;
-		//double residTN=0;
 
-		if (psr[0].TNsubtractRed ==1)
-		  {
-		    resid  -= psr[0].obsn[o].TNRedSignal;
-		  }
-		
-		if (psr[0].TNsubtractDM ==1)
-		  {
-		    resid -= psr[0].obsn[o].TNDMSignal;
-		  }
-		if (psr[0].TNsubtractChrom ==1)
-		  {
-		    resid -= psr[0].obsn[o].TNChromSignal;
-		  }
-			
+                double resid=(double)psr[0].obsn[o].residual;
+                //double residDM=0;
+                //double residTN=0;
+
+                if (psr[0].TNsubtractRed ==1)
+                {
+                    resid  -= psr[0].obsn[o].TNRedSignal;
+
+                }
+
+                if (psr[0].TNsubtractDM ==1)
+                {
+                    resid -= psr[0].obsn[o].TNDMSignal;
+                }
+                if (psr[0].TNsubtractChrom ==1)
+                {
+                    resid -= psr[0].obsn[o].TNChromSignal;
+                }
+
 
 
                 int bin = floor(((double)psr[0].obsn[o].bat-mintime)/timestep);
@@ -140,11 +142,11 @@ void averageDMResiduals(pulsar *psr, int npsr){
                 AverageWeight[flagindex][bin] += 1.0/adjustedErr;
                 AverageRes[flagindex][bin] += (double)resid*powf(freq/1400.,2.)/adjustedErr;
                 AverageBat[flagindex][bin] += (double)psr[0].obsn[o].bat/adjustedErr;
-		AverageFreq[flagindex][bin] += freq/adjustedErr;
-	    }
+                AverageFreq[flagindex][bin] += freq/adjustedErr;
+            }
         }
 
-        }
+    }
 
     for(int o=0;o<psr[0].nobs;o++){
 
@@ -390,7 +392,7 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
     longdouble nphase,phase2,phase3,phase4,phase2state,lastResidual=0,priorResidual=0;
     longdouble *phase5 = new longdouble[MAX_OBSN];
     longdouble lastBat=0.0,priorBat=0.0;
-    longdouble phaseJ,phaseW;
+    longdouble phaseJ,phaseW,phaseShape;
     longdouble ftpd,fct,ff0,phaseint;
     longdouble torb,deltaT,dt00=0.0,phas1=0.0;
     longdouble mean,tnmean, ct00=0.0;
@@ -705,6 +707,23 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
                     }
                 }
             }
+
+            /* Red Shapelet Events (M. Keith 2023) */
+            phaseShape=0;
+            for (int iTNShape=0; iTNShape < psr[p].nTNShapeletEvents; ++iTNShape) {
+                // We only want to do ones with a spectral index equal to zero here
+                if (psr[p].TNShapeletEvFScale[iTNShape] == 0.0) {
+                    // I think that the red shape is a time term...
+                    phaseShape -= evaluateShapelet(psr->TNShapeletEvN[iTNShape],
+                            psr->TNShapeletEvPos[iTNShape],
+                            psr->TNShapeletEvWidth[iTNShape],
+                            psr->TNShapeletEvCoef[iTNShape],
+                            (double)psr[p].obsn[i].bat)*psr[p].param[param_f].val[0];
+                }
+            }
+
+
+
 
 
             /* Add in extra phase due to whitening procedures */
@@ -1993,7 +2012,7 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
 
 
 
-            phase5[i] = phase2+phase3+phase4+phaseJ+phaseW+phase2state;
+            phase5[i] = phase2+phase3+phase4+phaseJ+phaseW+phase2state + phaseShape;
             //	   printf("Point 1: %.5f %.5f %.5f %.5f %.5f %.5f\n",(double)phase5[i],(double)phase2,(double)phase3,(double)phase4,(double)phaseJ,(double)phaseW);
             if (psr[p].obsn[i].nFlags>0) /* Look for extra factor to add to residuals */
             {
@@ -2312,6 +2331,10 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
                 if (psr[p].TNsubtractRed ==1)
                 {
                     psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNRedSignal;
+                    // Also subtract Common Mode signal if present
+                    if (psr[p].dmoffsCMnum > 0) {
+                        psr[p].obsn[i].residualtn -= ifunc(psr[p].dmoffsCM_mjd,psr[p].dmoffsCM,(double)psr[p].obsn[i].sat,psr[p].dmoffsCMnum);
+                    }
                 }
 
                 if (psr[p].TNsubtractDM ==1)
