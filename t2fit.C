@@ -49,7 +49,8 @@
 
 void callFitFuncPlugin(pulsar *psr,int npsr, const char *covarFuncFile); // currently in doFit.C
 
-void t2fit_postfit(pulsar* psr, int npsr);
+void t2fit_postfit(pulsar *psr, int npsr);
+void subtractTNPoly(pulsar *psr, int ipsr, label param);
 void t2fit_prefit(pulsar* psr, int npsr);
 
 // Remove elements from SVD sigma matrix below this value.
@@ -573,30 +574,178 @@ void t2fit_prefit(pulsar* psr, int npsr){
  */
 void t2fit_postfit(pulsar* psr, int npsr){
 
+
+    
     /**
      * Need to squareroot the TN error bars.
      */
     for (int ipsr = 0; ipsr < npsr; ++ipsr){
+        
+        
+
         if (psr[ipsr].TNRedAmp && psr[ipsr].TNRedGam) {
             for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
                 psr[ipsr].obsn[iobs].TNRedErr = sqrt(psr[ipsr].obsn[iobs].TNRedErr);
             }
+            subtractTNPoly(psr, ipsr,param_f);
         }
         if (psr[ipsr].TNDMAmp && psr[ipsr].TNDMGam) {
             for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
                 psr[ipsr].obsn[iobs].TNDMErr = sqrt(psr[ipsr].obsn[iobs].TNDMErr);
             }
+
+            subtractTNPoly(psr, ipsr,param_dm);
         }
-	if (psr[ipsr].TNChromAmp && psr[ipsr].TNChromGam && psr[ipsr].TNChromIdx) {
+	    if (psr[ipsr].TNChromAmp && psr[ipsr].TNChromGam && psr[ipsr].TNChromIdx) {
+
             for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
                 psr[ipsr].obsn[iobs].TNChromErr = sqrt(psr[ipsr].obsn[iobs].TNChromErr);
             }
+            subtractTNPoly(psr, ipsr,param_cm);
         }
     }
-
 }
 
+void subtractTNPoly(pulsar *psr, int ipsr, label param)
+{
+    int _writeResiduals=writeResiduals; // store and disable writeResiduals so that we don't clobber the output
+    writeResiduals=0;
+    if (psr[ipsr].TNsubtractPoly)
+    {
+        double *psr_x = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
+        double *psr_y = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
+        double *psr_e = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
+        double *white_y = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
+        int *psr_toaidx = (int *)malloc(sizeof(int) * psr[ipsr].nobs); // mapping from fit data to observation number
+        unsigned int psr_ndata = t2Fit_getFitData(psr + ipsr, psr_x, psr_y, psr_e, psr_toaidx);
+        int nParams = 0;
 
+
+        for (int k = 0; k < psr[ipsr].param[param].aSize; ++k)
+        {
+            if (psr[ipsr].param[param].fitFlag[k] == 1)
+            {
+                ++nParams;
+            }
+        }
+
+        paramDerivFunc fitfunc;
+        paramUpdateFunc updatefunc;
+        switch(param){
+            case param_dm:
+                fitfunc=t2FitFunc_stdDm;
+                updatefunc=t2UpdateFunc_simpleAdd;
+                break;
+            case param_f:
+                fitfunc=t2FitFunc_stdFreq;
+                updatefunc=t2UpdateFunc_stdFreq;
+                nParams += 1; // we need to fit for the constant term as well.
+                break;
+            case param_cm:
+                fitfunc=t2FitFunc_stdCm;
+                updatefunc=t2UpdateFunc_simpleAdd;
+                break;
+        }
+
+        
+        
+        if (nParams > 0 || param==param_f)
+        {
+            double **designMatrix = malloc_blas(psr_ndata, nParams);
+            double **white_designMatrix = malloc_blas(psr_ndata, nParams);
+            int iparam = 0;
+            for (int k = 0; k < psr[ipsr].param[param].aSize; ++k)
+            {
+                if (psr[ipsr].param[param].fitFlag[k] == 1)
+                {
+                    for (int ifit = 0; ifit < psr_ndata; ++ifit)
+                    {
+                        designMatrix[ifit][iparam] = fitfunc(psr, ipsr, psr_x[ifit], psr_toaidx[ifit], param, k);
+                        white_designMatrix[ifit][iparam] = designMatrix[ifit][iparam] / psr[ipsr].obsn[psr_toaidx[ifit]].toaErr;
+                        switch(param) {
+                            case param_f:
+                                psr_y[ifit] = psr[ipsr].obsn[psr_toaidx[ifit]].TNRedSignal;
+                                break;
+                            case param_dm:
+                                psr_y[ifit] = psr[ipsr].obsn[psr_toaidx[ifit]].TNDMSignal;
+                                break;
+                            case param_cm:
+                                psr_y[ifit] = psr[ipsr].obsn[psr_toaidx[ifit]].TNChromSignal;
+                                break;
+
+                        }
+                        
+                        white_y[ifit] = psr_y[ifit] / psr[ipsr].obsn[psr_toaidx[ifit]].toaErr;
+                    }
+                    ++iparam;
+                }
+            }
+            // need the constant term.
+            if (param==param_f){
+                for (int ifit = 0; ifit < psr_ndata; ++ifit)
+                {
+                    designMatrix[ifit][iparam] = 1.0;
+                    white_designMatrix[ifit][iparam] = designMatrix[ifit][iparam] / psr[ipsr].obsn[psr_toaidx[ifit]].toaErr;
+                }
+            }
+            // now we have the design matrix, we can do the fit.
+
+            double *outP = (double *)malloc(sizeof(double) * nParams);
+            double *outE = (double *)malloc(sizeof(double) * nParams);
+
+            TKleastSquares(psr_y, white_y, designMatrix, white_designMatrix, psr_ndata,
+                           nParams, T2_SVD_TOL, 0, outP, outE, NULL);
+            iparam = 0;
+            FILE *metafile;
+            if (_writeResiduals&4 ) {
+                switch(param) {
+                    case param_f:
+                        metafile=fopen("tnred_subtract.meta","w");
+                        break;
+                    case param_dm:
+                        metafile=fopen("tnreddm_subtract.meta","w");
+                        break;
+                    case param_cm:
+                        metafile=fopen("tnredcm_subtract.meta","w");
+                        break;
+                    default:
+                        metafile=fopen("tnred_subtract.meta","w");
+                        break;
+                }
+            }
+            for (int k = 0; k < psr[ipsr].param[param].aSize; ++k)
+            {
+                if (psr[ipsr].param[param].fitFlag[k] == 1)
+                {
+                    logmsg("TNsubtractPoly -- Updating %s k=%d : %lg +/- %lg", label_str[param], k, outP[iparam], outE[iparam]);
+                    if (_writeResiduals&4 ) {
+                        fprintf(metafile,"%s %d %lg %lg\n",label_str[param],k,outP[iparam],outE[iparam]);
+                    }
+                    updatefunc(psr, ipsr, param, k, outP[iparam], -1);
+                    for (int ifit = 0; ifit < psr_ndata; ++ifit)
+                    {
+                        switch(param) {
+                            case param_f:
+                                psr[ipsr].obsn[psr_toaidx[ifit]].TNRedSignal -= designMatrix[ifit][iparam] * outP[iparam];
+                                break;
+                            case param_dm:
+                                psr[ipsr].obsn[psr_toaidx[ifit]].TNDMSignal -= designMatrix[ifit][iparam] * outP[iparam];
+                                break;
+                            case param_cm:
+                                psr[ipsr].obsn[psr_toaidx[ifit]].TNChromSignal -= designMatrix[ifit][iparam] * outP[iparam];
+                                break;
+                        }
+                    }
+                    ++iparam;
+                }
+            }
+            if (_writeResiduals&4 ) {
+                fclose(metafile);
+            }
+        }
+    }
+    writeResiduals=_writeResiduals;
+}
 
 unsigned int t2Fit_getFitData(pulsar *psr, double* x, double* y,
         double* e, int* ip){
@@ -926,6 +1075,19 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
                 OUT.constraintValue[OUT.nConstraints] = 0;
                 ++OUT.nConstraints;
             }
+
+            for (int i=0;i<psr->TNRed_log_freqs;++i) {
+                OUT.constraintIndex[OUT.nConstraints]=constraint_red_sin;
+                OUT.constraintCounters[OUT.nConstraints]=i + psr->TNRedC;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_red;
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                ++OUT.nConstraints;
+                OUT.constraintIndex[OUT.nConstraints]=constraint_red_cos;
+                OUT.constraintCounters[OUT.nConstraints]=i + psr->TNRedC;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_red;
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                ++OUT.nConstraints;
+            }
         }
         if (psr->nTNBandNoise > 0){
             int counter=0;
@@ -1018,6 +1180,18 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
                 OUT.constraintValue[OUT.nConstraints] = 0;
                 ++OUT.nConstraints;
             }
+            for (int i=0;i<psr->TNChrom_log_freqs;++i) {
+                OUT.constraintIndex[OUT.nConstraints]=constraint_red_chrom_sin;
+                OUT.constraintCounters[OUT.nConstraints]=i + psr->TNChromC;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_red_chrom;
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                ++OUT.nConstraints;
+                OUT.constraintIndex[OUT.nConstraints]=constraint_red_chrom_sin;
+                OUT.constraintCounters[OUT.nConstraints]=i + psr->TNChromC;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_red_chrom;
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                ++OUT.nConstraints;
+            }
         }
 
 
@@ -1042,6 +1216,18 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
                 ++OUT.nConstraints;
                 OUT.constraintIndex[OUT.nConstraints]=constraint_red_dm_cos;
                 OUT.constraintCounters[OUT.nConstraints]=i;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_red_dm;
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                ++OUT.nConstraints;
+            }
+            for (int i=0;i<psr->TNDM_log_freqs;++i) {
+                OUT.constraintIndex[OUT.nConstraints]=constraint_red_dm_sin;
+                OUT.constraintCounters[OUT.nConstraints]=i + psr->TNDMC;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_red_dm;
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                ++OUT.nConstraints;
+                OUT.constraintIndex[OUT.nConstraints]=constraint_red_dm_sin;
+                OUT.constraintCounters[OUT.nConstraints]=i + psr->TNDMC;
                 OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_red_dm;
                 OUT.constraintValue[OUT.nConstraints] = 0;
                 ++OUT.nConstraints;
@@ -1433,6 +1619,11 @@ void t2fit_fillOneParameterFitInfo(pulsar* psr, param_label fit_param, const int
             OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_simpleAdd;
             ++OUT.nParams;
             break;
+        case param_chromx:
+            OUT.paramDerivs[OUT.nParams]     =t2FitFunc_chromx;
+            OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_simpleAdd;
+            ++OUT.nParams;
+            break;
         case param_dmassplanet:
             OUT.paramDerivs[OUT.nParams]     =t2FitFunc_planet;
             OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_simpleAdd;
@@ -1583,7 +1774,7 @@ void t2fit_fillOneParameterFitInfo(pulsar* psr, param_label fit_param, const int
 
         case param_red_sin:
         case param_red_cos:
-            for (int i=0; i < psr->TNRedC ; ++i){
+            for (int i=0; i < psr->TNRedC + psr->TNRed_log_freqs ; ++i){
                 OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_red;
                 OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_red;
                 OUT.paramCounters[OUT.nParams]=i;
@@ -1631,7 +1822,7 @@ void t2fit_fillOneParameterFitInfo(pulsar* psr, param_label fit_param, const int
         case param_red_dm_sin:
         case param_red_dm_cos:
             {
-                for (int i=0; i < psr->TNDMC ; ++i){
+                for (int i=0; i < psr->TNDMC  + psr->TNDM_log_freqs; ++i){
                     OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_red_dm;
                     OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_red_dm;
                     OUT.paramCounters[OUT.nParams]=i;
@@ -1645,7 +1836,7 @@ void t2fit_fillOneParameterFitInfo(pulsar* psr, param_label fit_param, const int
         case param_red_chrom_sin:
         case param_red_chrom_cos:
             {
-                for (int i=0; i < psr->TNChromC ; ++i){
+                for (int i=0; i < psr->TNChromC  + psr->TNChrom_log_freqs; ++i){
                     OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_red_chrom;
                     OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_red_chrom;
                     OUT.paramCounters[OUT.nParams]=i;

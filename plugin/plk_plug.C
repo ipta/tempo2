@@ -60,7 +60,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag,char parFile[][MAX_FIL
 	    char timFile[][MAX_FILELEN],float lockx1,float lockx2,float locky1,
 	    float locky2,int xplot,int yplot,int publish,int argc,char *argv[],
 	    int menu,char *setupFile,
-            int showChisq,int nohead,char* flagColour,char *bandsFile,int displayPP,
+            int showChisq,int nohead,char* flagColour,char *bandsFile,int displayPP, int plk_mode,
 	    int recordStrokes,FILE *recordFile);
 
 int setPlot(float *x,int count,pulsar *psr,int iobs,double unitFlag,int plotPhase,int plot,int *userValChange,char *userCMD,char *userValStr,float *userX,longdouble centreEpoch,int log,char *flagStr);
@@ -104,6 +104,8 @@ void viewModels(pulsar *psr,float x1,float x2,longdouble centreEpoch,int removeM
         int fitFlag,float *x,float *y);
 double lmst2(double mjd,double olong,double *tsid,double *tsid_der);
 
+void update_pulse_number_flag(pulsar *psr, int i);
+
 bool cholmode=false;
 
 /* GLOBAL VARIABLES FOR FITWAVES */
@@ -113,7 +115,7 @@ int    FITWAVES_harmonicStep;
 double FITWAVES_par[1000];
 char flagStore[100][100];
 
-void help() /* Display help */
+void help(int plk_mode) /* Display help */
 {
     printf("\nFitting and Calculating Options\n"); /* Playing around with individual TOA's and global TOA trends */
     printf("===============================\n");
@@ -133,8 +135,17 @@ void help() /* Display help */
     printf("ctrl-r     Select regions in MJDs and write to file\n");
     printf("w          toggle fitting using weights\n");
     printf("x          redo fit using post-fit parameters\n");
-    printf("+          add positive phase jump\n");
-    printf("-          add negative phase jump\n");
+    if (plk_mode == 1) {
+        printf("\n>>>>> NOTE - these options are specific to plk_mode =1\n");
+        printf("+          subtract 1 pulse number from all points after this\n");
+        printf("_          add 1 pulse number to all points after this\n");
+        printf("=          subtract 1 pulse number from this point\n");
+        printf("-          add 1 pulse number to this point\n");
+        printf("<<<<<\n\n");
+    } else{
+        printf("+          add positive phase jump\n");
+        printf("-          add negative phase jump\n");
+    }
     printf("BACKSPACE  remove all phase jumps\n");
     printf("ctrl-=     add period to residuals above cursor\n");
     printf("/          re-read .par file\n");
@@ -239,10 +250,13 @@ void help() /* Display help */
 
     printf("\nVarious Options\n");
     printf("===============\n");
+    printf("\\          Switch to an alternative mode!\n");
     printf("C          run unix command with filenames for highlighted observations\n");
     printf("h          this help file\n");
     printf("q          quit\n");
 }
+
+
 
 /* The main function called from the TEMPO2 package is 'graphicalInterface' */
 /* Therefore this function is required in all plugins                       */
@@ -275,6 +289,11 @@ extern "C" int graphicalInterface(int argc,char *argv[],pulsar *psr,int *npsr)
     int recordStrokes=0;
     char recordFileStr[1024];
     FILE *recordFile;
+    // We are running out of keypresses and sometimes it is useful to have more controls.
+    // implement alternative modes.
+    int plk_mode=0;
+
+
     
     int replayRecord=0;
 
@@ -382,6 +401,12 @@ extern "C" int graphicalInterface(int argc,char *argv[],pulsar *psr,int *npsr)
         {
             strcpy(flagColour,argv[++i]);
         }
+        else if (strcmp(argv[i],"-mode") == 0)
+        {
+            sscanf(argv[++i],"%d",&plk_mode);
+            printf("Setting PLK MODE to %d\n",plk_mode);
+        }
+
         else if (strcmp(argv[i],"-saveonquit") == 0)
         {
             strcpy(saveonquit,argv[++i]);
@@ -489,7 +514,7 @@ extern "C" int graphicalInterface(int argc,char *argv[],pulsar *psr,int *npsr)
     if (debugFlag==1) printf("plk: calling doPlot\n");
     doPlot(psr,*npsr,gr,unitFlag,parFile,timFile,lockx1,lockx2,locky1,locky2,xplot,yplot,
 	   publish,argc,argv,menu,setupFile,showChisq,nohead,flagColour,bandsFile,
-	   displayPP,recordStrokes,recordFile);  /* Do plot */
+	   displayPP,plk_mode,recordStrokes,recordFile);  /* Do plot */
 
     if (recordStrokes==1)
       fclose(recordFile);
@@ -562,7 +587,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 	    char timFile[][MAX_FILELEN],float lockx1, float lockx2, float locky1, 
 	    float locky2,int xplot,int yplot,
 	    int publish,int argc,char *argv[],int menu,char *setupFile, 
-	    int showChisq,int nohead,char* flagColour,char *bandsFile,int displayPP,
+	    int showChisq,int nohead,char* flagColour,char *bandsFile,int displayPP, int plk_mode,
 	    int recordStrokes,FILE *recordFile)
 {
 
@@ -679,7 +704,6 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
         }
     }
 
-
     overX = (float *)malloc(sizeof(float)*MAX_OBSN);
     overY = (float *)malloc(sizeof(float)*MAX_OBSN);
     overYe = (float *)malloc(sizeof(float)*MAX_OBSN);
@@ -779,13 +803,13 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
         fclose(fin);
     }
 
-
-
     if (psr[0].param[param_start].paramSet[0]==1) 
         origStart = psr[0].param[param_start].val[0];
     if (psr[0].param[param_finish].paramSet[0]==1) 
         origFinish = psr[0].param[param_finish].val[0];
 
+
+    
     /* Obtain a graphical PGPLOT window */
     cpgbeg(0,gr,1,1);
     cpgpap(0,aspect);
@@ -867,12 +891,13 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
         float* yerr1_2 = new float[MAX_OBSN];
         float* yerr2_2 = new float[MAX_OBSN];
 
-
+        if (plk_mode != 0) {
+            printf("PLK mode = %d\n",plk_mode);
+        }
         if(debugFlag) 
             printf("Fitflag = %d\n",fitFlag);
         if (centre==-1)     centreEpoch = psr[0].param[param_pepoch].val[0];
         else if (centre==1)	centreEpoch = (min1+max1)/2.0;
-
 
         if (xplot != old_xplot){
             // We changed x-axis... check the zooms!
@@ -997,9 +1022,9 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 
 		  
 		}
-                if(yplot==2 && psr[0].AverageDMResiduals == 1){errBar[count] = psr[0].obsn[i].averagedmerr/1e-6;}
-                if(yplot==16){errBar[count] = (float) psr[0].obsn[i].TNRedErr/1e-6;}
-                if(yplot==17){
+        if(yplot==2 && psr[0].AverageDMResiduals == 1){errBar[count] = psr[0].obsn[i].averagedmerr/1e-6;}
+        if(yplot==16){errBar[count] = (float) psr[0].obsn[i].TNRedErr/1e-6;}
+        if(yplot==17){
 		  double DMKappa=2.410*pow(10.0,-16);
 		  double freq=(double)psr[0].obsn[i].freqSSB;
 		  longdouble yrs = (psr[0].obsn[i].sat - psr[0].param[param_dmepoch].val[0])/365.25;
@@ -1095,7 +1120,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
             plotx1 = lockx1;
             plotx2 = lockx2;
         }
-
+	
         /* Plot the residuals */
         if (noreplot==0)
         {
@@ -1158,7 +1183,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 }else
                     cpgbox( "BCNST1", 0.0, 0, "BCNST1", 0.0, 0 );
             }
-
+	    
             char rmsStr[10];
             if (cholmode) strcpy(rmsStr,"Crms");
             else {
@@ -1168,7 +1193,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 
             if (yplot==2)
 	      {
-		if ((psr[0].TNsubtractDM==1) || (psr[0].TNsubtractRed ==1))
+		if ((psr[0].TNsubtractDM==1) || (psr[0].TNsubtractRed ==1)|| (psr[0].TNsubtractChrom ==1))
 		  {
 		    sprintf(title,"%s (%s = %.3f \\gms) %s",psr[0].name,rmsStr,psr[0].rmstn,fitType);
 		  }
@@ -1278,11 +1303,13 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                         cpgsci(7);
                     cpgline(2,px,py);
                     sprintf(tstr,"%+d",psr[0].phaseJumpDir[i]);
+                    printf("%+d\n",psr[0].phaseJumpDir[i]);
                     cpgtext(px[0]-xch/2.0,py[1]+ych/2.0,tstr);
                 }
                 cpgsls(1); cpgsci(1);
                 cpgsch(fontSize); 
             }
+
             if (nline > 0)
             {
                 //	    py[0]=miny;
@@ -1578,14 +1605,16 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
             }
             else if(key=='F'){
                 if(psr[0].TNsubtractDM==0){
-                    printf("will substract PL DM Variations on next Fit \n");
+                    printf("will substract PL DM/Chrom Variations on next Fit \n");
                     psr[0].TNsubtractDM=1;
+                    psr[0].TNsubtractChrom=1;
 		    formResiduals(psr,npsr,1);
 		     textOutput(psr,npsr,0,0,0,0,"");
 		}
                 else if(psr[0].TNsubtractDM==1){
-                    printf("will Re-add PL DM Variations on next Fit \n");
+                    printf("will Re-add PL DM/Chrom Variations on next Fit \n");
                     psr[0].TNsubtractDM=0;
+                    psr[0].TNsubtractChrom=0;
 		    formResiduals(psr,npsr,1);
 		     textOutput(psr,npsr,0,0,0,0,"");
 		}
@@ -1698,6 +1727,15 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 noreplot=1;
                 continue;
             }
+            else if (key=='\\') {
+                printf("Change Mode\n");
+                printf(" (0) Normal PLK mode\n");
+                printf(" (1) Pulse Number Adjustments\n"); 
+                printf(" Select >> ");
+                scanf("%d",&plk_mode);
+                if (plk_mode < 0) plk_mode=0;
+                if (plk_mode > 1) plk_mode=0;
+            }
 
             else if (key=='P') /* New parameter file */
             {
@@ -1733,7 +1771,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     overPlotn = 1;
                     plottingx = x[0]; 
                 }
-                else if (key=='h') help();
+                else if (key=='h') help(plk_mode);
                 else if (key=='D') //view profile (same as middle button)
                 {
                     char str[1000];
@@ -1921,8 +1959,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                                 if (strcmp(psr[0].obsn[i].flagID[k],flagColour)==0)
                                 {
                                     found=0;
-                                    for (j=0;j<flagN;j++)
-                                    {
+                                    for (j=0;j<flagN;j++) {
                                         if (strcmp(psr[0].obsn[i].flagVal[k],flagStore[j])==0)
                                         {
                                             found=1;
@@ -1945,33 +1982,8 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 else if (key=='n') /* Save new .tim file with pulse numbers */
                 {
                     logmsg("Writing pulse numbers to withpn.tim");
-                    for (i=0;i<psr[0].nobs;i++)
-                    {
-                        int flagid=psr[0].obsn[i].nFlags;
-                        for(int k=0; k < flagid ; k++){
-                            if(strcmp(psr[0].obsn[i].flagID[k],"-pnadd")==0){
-                                printf("Removing -pnadd flag\n");
-                                for (int kk=k; kk < flagid-1; kk++){
-                                    strcpy(psr[0].obsn[i].flagID[kk],psr[0].obsn[i].flagID[kk+1]);
-                                    strcpy(psr[0].obsn[i].flagVal[kk],psr[0].obsn[i].flagVal[kk+1]);
-                                }
-                                flagid-=1;
-                                k-=1;
-                            }
-                        }
-                        psr[0].obsn[i].nFlags = flagid;
-                        for(int k=0; k < flagid ; k++){
-                            if(strcmp(psr[0].obsn[i].flagID[k],"-pn")==0){
-                                flagid=k;
-                                break;
-                            }
-                        }
-                        //printf("%g %lld\n",(double)psr[0].obsn[i].sat,(psr[0].obsn[i].pulseN - psr[0].obsn[0].pulseN));
-                        strcpy(psr[0].obsn[i].flagID[flagid],"-pn");
-                        sprintf(psr[0].obsn[i].flagVal[flagid],"%lld",psr[0].obsn[i].pulseN-psr[0].obsn[0].pulseN);
-                        if (flagid==psr[0].obsn[i].nFlags)
-                            psr[0].obsn[i].nFlags++;
-                    }
+                    // updating the zeroth one automatically updates them all by reference.
+                    update_pulse_number_flag(psr,0);
                     writeTim("withpn.tim",psr,"tempo2");
                 }
                 else if (key==19) /* over-write .tim file */
@@ -1984,8 +1996,33 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     printf("FlagVal = "); scanf("%s",highlightVal[highlightNum++]);
                     getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
                 }
-                else if (key=='-' || key=='+') /*  phase jump */
+                else if (plk_mode == 1 && (key=='-' || key=='+' || key=='_' || key=='=')) {
+                    // This is pulse number adjusting mode
+                    int i= idPoint(psr,x,y,id,count,mouseX,mouseY); /* Identify closest point */
+                    int dpn=-1;
+                    if (key == '-' || key== '_' ){
+                        dpn=1;
+                    }
+
+                    if (key == '-' || key == '=' ) { // just this ToA
+                        psr[0].obsn[i].pulseN += dpn;
+                        update_pulse_number_flag(psr,i);
+                    } else {
+                        // All ToAs after this one
+                        longdouble pn_epoch = psr[0].obsn[i].sat;
+                        for (i=0;i<psr[0].nobs;i++){
+                            if (psr[0].obsn[i].sat >= pn_epoch) {
+                                psr[0].obsn[i].pulseN += dpn;
+                                update_pulse_number_flag(psr,i);
+                            }
+                        }
+                    }
+                    formResiduals(psr,npsr,1);
+
+                }
+                else if (plk_mode != 1 && (key=='-' || key=='+')) /*  phase jump */
                 {
+                    // Note: plk_mode 1 is pulse number adjustment mode. Otherwise we do traditional phase wraps.
                     // Find closest point to the left
                     int i,iclosest;
                     float closest,x1,x2,x3,x4,y1,y2,y3,y4,xscale,yscale,xpos,ypos;
@@ -2755,6 +2792,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 }
 
                 else printf("Unknown key press %c (%d)\n",key,(int)key);
+
         }
         if (graphics==1) graphics=2;
         else if (graphics==2)
@@ -3360,6 +3398,8 @@ void checkMenu(pulsar *psr,float mx,float my,int button,int fitFlag,
                     {
                         if (psr[0].param[i].paramSet[j]==1)
                         {
+                            if (i==param_chromxr1 || i==param_chromxr2) continue;
+                            if (i==param_dmxr1 || i==param_dmxr2) continue;
                             if (strcmp(psr[0].param[i].shortlabel[j],"DMEPOCH")!=0 &&
                                     strcmp(psr[0].param[i].shortlabel[j],"PEPOCH")!=0 &&
                                     strcmp(psr[0].param[i].shortlabel[j],"START")!=0 &&
@@ -3472,7 +3512,6 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         else if (mouseY==14) *xplot=16;
         else if (mouseY==15) *xplot=17;
 	else if (mouseY==16) *xplot=19;
-
     }
     else if (mouseX==1)
     {
@@ -3493,7 +3532,6 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         else if (mouseY==14 &&  psr[0].TNRedAmp != 0 && psr[0].TNRedGam != 0) *yplot=16;
         else if (mouseY==15 && psr[0].TNDMAmp != 0 && psr[0].TNDMGam != 0) *yplot=17;
 	else if (mouseY==16 && psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx !=0) *yplot=19;
-
     }
 
     // Now check the bottom menu
@@ -3526,7 +3564,7 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         printf("Measure x = %.3g days\t y = %.3g\t gradient = %.3g\n",mouse_x2-mouse_x1,mouse_y2-mouse_y1,(mouse_y2-mouse_y1)/(mouse_x2-mouse_x1));
     }
     else if (mouseX==3 && mouseY==0)
-        help();
+        help(0);
     else if (mouseX==0 && mouseY==1)
     {
         int i;
@@ -3557,12 +3595,12 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
     }
 
     /* Now check jumps */
-    if (psr[0].nJumps > 0)
+    if (psr[0].nJumps + psr[0].nfdJumps > 0)
     {
         int yj,xj;
         int c=1;
 
-        if (psr[0].nJumps > 15)
+        if (psr[0].nJumps + psr[0].nfdJumps > 15)
         {
             printf("%g %g %d %d\n",mx,my,mouseX,mouseY);
             if (mouseX == 9 && mouseY == 2)
@@ -3573,7 +3611,7 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
             }
             else if (mouseX == 9 && mouseY == 4)
             {
-                if (*jumpOffset+15 <= psr[0].nJumps)
+                if (*jumpOffset+15 <= psr[0].nJumps + psr[0].nfdJumps)
                     *jumpOffset+=5;
                 c=0;
             }
@@ -3582,13 +3620,26 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         {
             xj = (int)(mouseX/2);
             yj = (int)(mouseY-2);
-            if (psr[0].fitJump[xj+(yj*5)+1+(*jumpOffset)]==1) 
+            if(xj+(yj*5)+1+(*jumpOffset) <= psr[0].nJumps)
             {
-                psr[0].fitJump[xj+(yj*5)+1+(*jumpOffset)]=0;
-                psr[0].jumpValErr[xj+(yj*5)+1+(*jumpOffset)] = 0.0;
+                //printf("%s\n",psr[0].jumpStr[xj+(yj*5)+1+(*jumpOffset)]);
+                if (psr[0].fitJump[xj+(yj*5)+1+(*jumpOffset)]==1)
+                {
+                    psr[0].fitJump[xj+(yj*5)+1+(*jumpOffset)]=0;
+                    psr[0].jumpValErr[xj+(yj*5)+1+(*jumpOffset)] = 0.0;
+                }
+                else psr[0].fitJump[xj+(yj*5)+1+(*jumpOffset)]=1;
             }
-            else psr[0].fitJump[xj+(yj*5)+1+(*jumpOffset)]=1;
-            //      printf("%d %d %d %d\n",mouseX,mouseY,xj,xj+(yj*5)+1);
+            else
+            {
+                //printf("%s\n",psr[0].fdjumpStr[xj+(yj*5)+1+(*jumpOffset)-psr[0].nJumps]);
+                if (psr[0].fitfdJump[xj+(yj*5)+1+(*jumpOffset)-psr[0].nJumps]==1)
+                {
+                    psr[0].fitfdJump[xj+(yj*5)+1+(*jumpOffset)-psr[0].nJumps]=0;
+                    psr[0].fdjumpValErr[xj+(yj*5)+1+(*jumpOffset)-psr[0].nJumps] = 0.0;
+                }
+                else psr[0].fitfdJump[xj+(yj*5)+1+(*jumpOffset)-psr[0].nJumps]=1;
+            }
         }
     }
 }
@@ -3727,6 +3778,9 @@ void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,i
             {
                 if (psr[0].param[i].paramSet[j]==1)
                 {
+                    if (i==param_chromxr1 || i==param_chromxr2) continue;
+                    if (i==param_dmxr1 || i==param_dmxr2) continue;
+
                     if (strcmp(psr[0].param[i].shortlabel[j],"DMEPOCH")!=0 &&
                             strcmp(psr[0].param[i].shortlabel[j],"PEPOCH")!=0 &&
                             strcmp(psr[0].param[i].shortlabel[j],"START")!=0 &&
@@ -3815,7 +3869,7 @@ void drawMenu3_2(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty
     float x0,y0,xscale2,yscale2;
     float mx,my;
     char key;
-    char jumps[100],dummy[100];
+    char jumps[100],dummy[100], fdjumps[100];
     float xpos,ypos;
     int i,j;
 
@@ -3834,57 +3888,94 @@ void drawMenu3_2(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty
         ypos=0.45;
         for (i=jumpOffset+1;i<=psr[0].nJumps;i++)
         {
-	    sscanf(psr[0].jumpStr[i],"%s %s",dummy,jumps);
-	    // if jump name is -1 don't plot
+            sscanf(psr[0].jumpStr[i],"%s %s",dummy,jumps);
+            // if jump name is -1 don't plot
             if (strcmp(jumps, "-1") != 0)	
-	    {         
-		if (iFlagColour == 1)
-           	 {	
-                	for (j=0;j<nFlags; j++)
-                    	if (strcmp(jumps,flagStore[j])==0)
-                    	{
-                        	cpgsci(j+1);
-                       	 	if (j>=14)
-                            	cpgsci(j-12);
-                        	break;
-                   	 }
-                	cpgmove(xpos,ypos-0.03);
-                	cpgdraw(xpos+0.18,ypos-0.03);
-                	cpgdraw(xpos+0.18,ypos+0.15);
-                	cpgdraw(xpos,ypos+0.15);
-               	 	cpgdraw(xpos,ypos-0.03);
-           	 }
-            	if (psr[0].fitJump[i]==1) cpgsci(3);
-            	else cpgsci(2);
-
-            	cpgtext(xpos,ypos,jumps);
-            	xpos+=0.2;
-            	if (xpos==1)
-            	 {
-                	xpos=0.0;
-                	ypos-=0.2;
-            	 }
+            {         
+                if (iFlagColour == 1)
+                {
+                    for (j=0;j<nFlags; j++)
+                        if (strcmp(jumps,flagStore[j])==0)
+                        {
+                            cpgsci(j+1);
+                            if (j>=14)
+                                cpgsci(j-12);
+                            break;
+                        }
+                    cpgmove(xpos,ypos-0.03);
+                    cpgdraw(xpos+0.18,ypos-0.03);
+                    cpgdraw(xpos+0.18,ypos+0.15);
+                    cpgdraw(xpos,ypos+0.15);
+                    cpgdraw(xpos,ypos-0.03);
+                }
+                if (psr[0].fitJump[i]==1) cpgsci(3);
+                else cpgsci(2);
+                //printf("%f %f\n",xpos,ypos);
+                cpgtext(xpos,ypos,jumps);
+                xpos+=0.2;
+                if (xpos==1)
+                {
+                    xpos=0.0;
+                    ypos-=0.2;
+                }
             }
-	}	
+        }	
         cpgsci(1);
-        //if ctrl-i was pressed, add the zeroth backend (the one we're using as reference for jumps)
-        //WARNING: if the psr[0].nJumps happens to be multiple of 15, this won't be displayed (FIX IT!)
-        /*      if (iFlagColour == 1 && psr[0].nJumps - jumpOffset < 15) {
-                cpgtext(xpos,ypos,flagStore[0]);
-                cpgmove(xpos,ypos-0.03);
-                cpgdraw(xpos+0.18,ypos-0.03);
-                cpgdraw(xpos+0.18,ypos+0.15);
-                cpgdraw(xpos,ypos+0.15);
-                cpgdraw(xpos,ypos-0.03);
-                } */
     }
-    if (psr[0].nJumps > 15)
+
+    if (psr[0].nfdJumps > 0)
+    {
+        for (i=1;i<=psr[0].nfdJumps;i++)
+        {
+            sscanf(psr[0].fdjumpStr[i],"%s %s",dummy,jumps);
+            // if jump name is -1 don't plot 
+            if (strcmp(jumps, "-1") != 0)
+            {
+                if (iFlagColour == 1)
+                {
+                    for (j=0;j<nFlags; j++)
+                        if (strcmp(jumps,flagStore[j])==0)
+                        {
+                            cpgsci(j+1);
+                            if (j>=14)
+                                cpgsci(j-12);
+                            break;
+                        }
+                    cpgmove(xpos,ypos-0.03);
+                    cpgdraw(xpos+0.18,ypos-0.03);
+                    cpgdraw(xpos+0.18,ypos+0.15);
+                    cpgdraw(xpos,ypos+0.15);
+                    cpgdraw(xpos,ypos-0.03);
+                }
+                if (psr[0].fitfdJump[i]==1)
+                    cpgsci(3);
+                else
+                    cpgsci(2);
+                //printf("%f %f %s\n",xpos,ypos,jumps);
+                if(psr[0].fdjumpIdx[i]==-2)
+                    sprintf(fdjumps, "FDJUMPDM_%s",jumps);
+                else
+                    sprintf(fdjumps,"FDJUMP%i_%s",psr[0].fdjumpIdx[i],jumps);
+
+                cpgtext(xpos,ypos,fdjumps);
+                xpos+=0.2;
+                if (xpos==1)
+                {
+                    xpos=0.0;
+                    ypos-=0.2;
+                }
+            }
+        }
+        cpgsci(1);
+    }
+
+    if (psr[0].nfdJumps + psr[0].nJumps > 15)
     {
         if (jumpOffset >= 5) {
             xpos = 0.985; ypos = 0.45;
             cpgpt(1,&xpos,&ypos,30);
         }
-        if (psr[0].nJumps - jumpOffset > 15) {
+        if (psr[0].nfdJumps + psr[0].nJumps - jumpOffset > 15) {
             xpos = 0.985; ypos = 0.15;
             cpgpt(1,&xpos,&ypos,31);
         }
@@ -4325,7 +4416,7 @@ int setPlot(float *x,int count,pulsar *psr,int iobs,double unitFlag,int plotPhas
             if(psr[0].AverageResiduals == 1){x[count] = (float)(psr[0].obsn[iobs].averageres/unitFlag);}
             else if (psr[0].AverageDMResiduals ==1){x[count] = (float)(psr[0].obsn[iobs].averagedmres);}
 	    else if (psr[0].TNsubtractRed ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
-	    else if  (psr[0].TNsubtractDM ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
+	    else if  (psr[0].TNsubtractDM ==1 || psr[0].TNsubtractChrom ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
 
         }
         else
@@ -5076,5 +5167,40 @@ void replayLine(FILE *recordFile,int argc,char *argv[],pulsar *psr,int fitFlag,i
         printf("---------------------\n");
     }
 }
+
+
+void update_pulse_number_flag(pulsar *psr, int i) {
+    int flagid=psr[0].obsn[i].nFlags;
+    for(int k=0; k < flagid ; k++){
+        if(strcmp(psr[0].obsn[i].flagID[k],"-pnadd")==0){
+            printf("Removing -pnadd flag\n");
+            for (int kk=k; kk < flagid-1; kk++){
+                strcpy(psr[0].obsn[i].flagID[kk],psr[0].obsn[i].flagID[kk+1]);
+                strcpy(psr[0].obsn[i].flagVal[kk],psr[0].obsn[i].flagVal[kk+1]);
+            }
+            flagid-=1;
+            k-=1;
+        }
+    }
+    psr[0].obsn[i].nFlags = flagid;
+    for(int k=0; k < flagid ; k++){
+        if(strcmp(psr[0].obsn[i].flagID[k],"-pn")==0){
+            flagid=k;
+            break;
+        }
+    }
+    strcpy(psr[0].obsn[i].flagID[flagid],"-pn");
+    sprintf(psr[0].obsn[i].flagVal[flagid],"%lld",psr[0].obsn[i].pulseN-psr[0].obsn[0].pulseN);
+    if (flagid==psr[0].obsn[i].nFlags)
+        psr[0].obsn[i].nFlags++;
+
+    if (i==0) { // if we updated the first one... all the rest need to change because they reference the first one
+        for (i=1;i<psr[0].nobs;i++)
+        {
+            update_pulse_number_flag(psr,i);
+        }
+    }
+}
+
 
 const char * plugVersionCheck = TEMPO2_h_VER;

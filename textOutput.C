@@ -181,6 +181,7 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
             {
                 if (psr[p].param[i].paramSet[k]==1)
                 {
+                    if (i==param_chromxr1 || i==param_chromxr2 || i==param_dmxr1 || i==param_dmxr2) continue;
                     /* PARAMETER (name) */
                     if (i == param_raj && psr[p].eclCoord==1)
                         printf("%-15.15s ","ELONG");
@@ -327,17 +328,19 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
             }
         }
 
-
         /* FDJUMPS */
         for (i=1;i<=psr[p].nfdJumps;i++){
             {
-                printf("fdJump %d (%s): %.14g %.14g ",i,psr[p].fdjumpStr[i],psr[p].fdjumpVal[i],psr[p].fdjumpValErr[i]);
+	      if(psr[p].fdjumpIdx[i] == -2)
+                printf("FDJUMPDM (%s): %.14g %.14g ",psr[p].fdjumpStr[i],psr[p].fdjumpVal[i],psr[p].fdjumpValErr[i]);
+	      else
+		printf("FDJUMP%d (%s): %.14g %.14g ",psr[p].fdjumpIdx[i],psr[p].fdjumpStr[i],psr[p].fdjumpVal[i],psr[p].fdjumpValErr[i]);
                 
                 if (psr[p].fitfdJump[i]==1) printf("Y\n");
                 else printf("N\n");
             }
         }
-
+        
 
         /* Whitening */
         if (psr[p].param[param_wave_om].paramSet[0]==1)
@@ -1421,17 +1424,33 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                     sscanf(psr[p].jumpStr[i],"%s %s %s %s %s",str1,str2,str3,str4,str5);
                     if (strcasecmp(str1,"FREQ")==0 || strcasecmp(str1,"MJD")==0)
                         fprintf(fout2,"JUMP %s %s %s %.14g %d\n",str1,str2,str3,psr[p].jumpVal[i],psr[p].fitJump[i]);
-                    else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
+                    else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || strcasecmp(str1,"SCALED")==0 || str1[0]=='-')
                         fprintf(fout2,"JUMP %s %s %.14g %d\n",str1,str2,psr[p].jumpVal[i],psr[p].fitJump[i]);
                 }	
                 for (i=1;i<=psr[p].nfdJumps;i++)
                 {
                     sscanf(psr[p].fdjumpStr[i],"%s %s %s %s %s",str1,str2,str3,str4,str5);
-                    if (strcasecmp(str1,"FREQ")==0 || strcasecmp(str1,"MJD")==0)
-		      fprintf(fout2,"FDJUMP%d %s %s %s %.14g %d\n",psr[p].fdjumpIdx[i],str1,str2,str3,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
-                    else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
-		      fprintf(fout2,"FDJUMP%d %s %s %.14g %d\n",psr[p].fdjumpIdx[i],str1,str2,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
-                }	  
+                    if (psr[p].fdjumpIdx[i] == -2) { // a dm jump
+                        if (strcasecmp(str1,"FREQ")==0 || strcasecmp(str1,"MJD")==0)
+                            fprintf(fout2,"FDJUMPDM %s %s %s %.14g %d\n",str1,str2,str3,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
+                        else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
+                            fprintf(fout2,"FDJUMPDM %s %s %.14g %d\n",str1,str2,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
+
+                    } else { // a regular FD jump
+                        if (strcasecmp(str1,"FREQ")==0 || strcasecmp(str1,"MJD")==0)
+                            fprintf(fout2,"FDJUMP%d %s %s %s %.14g %d\n",psr[p].fdjumpIdx[i],str1,str2,str3,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
+                        else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
+                            fprintf(fout2,"FDJUMP%d %s %s %.14g %d\n",psr[p].fdjumpIdx[i],str1,str2,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
+                    }
+                                    }	  
+                if (psr[p].nfdJumps > 0) {
+                    if (psr[p].fdjump_log){
+                        fprintf(fout2,"FDJUMP_SCALE LOG\n");
+                    } else {
+                        fprintf(fout2,"FDJUMP_SCALE LINEAR\n");
+                    }
+                }
+
                 /* Add T2EFAC / T2EQUAD */
                 for (i=0;i<psr[p].nT2efac;i++)
                 {
@@ -1480,12 +1499,22 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                     fprintf(fout2,"TNDMAmp %g\n", psr[p].TNDMAmp);	
                     fprintf(fout2,"TNDMGam %g\n", psr[p].TNDMGam);
                     fprintf(fout2,"TNDMC %i\n", psr[p].TNDMC);
+                    if (psr[p].TNChrom_log_freqs > 0){
+                        fprintf(fout2,"TNDMFLog %i\n", psr[p].TNDM_log_freqs);
+                        fprintf(fout2,"TNDMFLog_factor %lf\n", psr[p].TNDM_log_factor);
+                    }
                 }
-		if(psr[p].TNChromAmp != 0 && psr[p].TNChromGam != 0){
+		        if(psr[p].TNChromAmp != 0 && psr[p].TNChromGam != 0){
                     fprintf(fout2,"TNChromAmp %g\n", psr[p].TNChromAmp);	
                     fprintf(fout2,"TNChromGam %g\n", psr[p].TNChromGam);
                     fprintf(fout2,"TNChromIdx %g\n", psr[p].TNChromIdx);
                     fprintf(fout2,"TNChromC %i\n", psr[p].TNChromC);
+                    if (psr[p].TNChrom_log_freqs > 0){
+                        fprintf(fout2,"TNChromFLog %i\n", psr[p].TNChrom_log_freqs);
+                        fprintf(fout2,"TNChromFLog_factor %lf\n", psr[p].TNChrom_log_factor);
+                    }
+                } else if (psr[p].TNChromIdx != 0){
+                    fprintf(fout2,"CHROM_INDEX %g\n", psr[p].TNChromIdx);
                 }
 
 		
@@ -1493,15 +1522,13 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                     fprintf(fout2,"TNRedAmp %g\n", psr[p].TNRedAmp);
                     fprintf(fout2,"TNRedGam %g\n", psr[p].TNRedGam);
                     fprintf(fout2,"TNRedC %i\n", psr[p].TNRedC);
+                    if (psr[p].TNRed_log_freqs > 0){
+                        fprintf(fout2,"TNRedFLog %i\n", psr[p].TNRed_log_freqs);
+                        fprintf(fout2,"TNRedFLog_factor %lf\n", psr[p].TNRed_log_factor);
+                    }
                 }
 
 
-                if(psr[p].TNChromAmp != 0 && psr[p].TNChromGam != 0){
-                    fprintf(fout2,"TNChromAmp %g\n", psr[p].TNChromAmp);
-                    fprintf(fout2,"TNChromGam %g\n", psr[p].TNChromGam);
-                   fprintf(fout2,"TNChromIdx %g\n", psr[p].TNChromIdx);
-                    fprintf(fout2,"TNChromC %i\n", psr[p].TNChromC);
-                }
 
                 if (psr[p].TN_QpPeriod > 0) {
                     fprintf(fout2,"TN_QpPeriod %g\n", psr[p].TN_QpPeriod);
@@ -1533,6 +1560,10 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
 
                 if (psr[p].TNsubtractRed ==1){
                     fprintf(fout2,"TNsubtractRed 1\n");
+
+                }
+                if (psr[p].TNsubtractPoly ==1){
+                    fprintf(fout2,"TNsubtractPoly %d\n", psr[p].TNsubtractPoly);
 
                 }
 
@@ -1697,6 +1728,7 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
            } */
 
         bool notwarned=true;
+        int count_bad_covariances=0;
         for (unsigned int i=0; i < psr[p].fitinfo.nParams;++i) {
             for (unsigned int j=0; j < i;++j) {
                 double corr = psr[p].covar[i][j]/sqrt(psr[p].covar[i][i]*psr[p].covar[j][j]);
@@ -1706,27 +1738,34 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                         logwarn("There are output parameters with very high covariance");
                         notwarned=false;
                     }
-                    param_label p1 = psr[p].fitinfo.paramIndex[i];
-                    param_label p2 = psr[p].fitinfo.paramIndex[j];
-                    int c1= psr[p].fitinfo.paramCounters[i];
-                    int c2= psr[p].fitinfo.paramCounters[j];
-                    char n1[80];
-                    char n2[80];
-                    if (c1 < psr[p].param[p1].aSize && strlen(psr[p].param[p1].shortlabel[c1])>0) {
-                        strncpy(n1,psr[p].param[p1].shortlabel[c1],80);
-                    } else {
-                        snprintf(n1,80,"%s(%d)",label_str[p1],c1);
+
+                    if (count_bad_covariances < 20) {
+                        param_label p1 = psr[p].fitinfo.paramIndex[i];
+                        param_label p2 = psr[p].fitinfo.paramIndex[j];
+                        int c1= psr[p].fitinfo.paramCounters[i];
+                        int c2= psr[p].fitinfo.paramCounters[j];
+                        char n1[80];
+                        char n2[80];
+                        if (c1 < psr[p].param[p1].aSize && strlen(psr[p].param[p1].shortlabel[c1])>0) {
+                            strncpy(n1,psr[p].param[p1].shortlabel[c1],80);
+                        } else {
+                            snprintf(n1,80,"%s(%d)",label_str[p1],c1);
+                        }
+                        if (c2 < psr[p].param[p2].aSize && strlen(psr[p].param[p2].shortlabel[c2])>0) {
+                            strncpy(n2,psr[p].param[p2].shortlabel[c2],80);
+                        } else {
+                            snprintf(n2,80,"%s(%d)",label_str[p2],c2);
+                        }
+                        printf("% 20s % 20s %+.5f\n",n1,n2,corr);
                     }
-                    if (c2 < psr[p].param[p2].aSize && strlen(psr[p].param[p2].shortlabel[c2])>0) {
-                        strncpy(n2,psr[p].param[p2].shortlabel[c2],80);
-                    } else {
-                        snprintf(n2,80,"%s(%d)",label_str[p2],c2);
-                    }
-                    printf("% 20s % 20s %+.5f\n",n1,n2,corr);
+                    count_bad_covariances++;
                 }
             }
         }
-    }
+        if (count_bad_covariances>20){
+            printf(" ... There were %d more covariances not shown\n",count_bad_covariances-20);
+        }
+    } // end loop over pulsars
 
     if (nGlobal > 0)
     { 

@@ -35,7 +35,7 @@ double ifunc(const double* mjd, const double* yoffs, const double t,const int N)
         // we are before the first jump
         // so our gradient is just the zeroth offset.
         return yoffs[0];
-    } else if(t > mjd[N-1]){
+    } else if(t >= mjd[N-1]){
         return yoffs[N-1];
     } else{
         // find the pair we are between...

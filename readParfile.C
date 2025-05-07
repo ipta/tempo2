@@ -319,62 +319,87 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                     psr->fitJump[psr->nJumps]=0;
             }
         }
+        if(strcasecmp(str1, "SCALED")==0){
+            if (nread>2)
+            {
+                sscanf(str3,"%lf",&(psr->jumpVal[psr->nJumps]));
+                if (sscanf(str4,"%d",&v5)==1)
+                {
+                    if (v5!=1) psr->fitJump[psr->nJumps]=0;
+                }
+                else
+                    psr->fitJump[psr->nJumps]=0;
+            }
+        }
         if(strcasecmp(str, "SATJUMP")==0){
             psr->jumpSAT[psr->nJumps]=1; // this is a SAT jump
         }
 
     }
 
-    else if (strncasecmp(str, "FDJUMP",6)==0)
-    {
-
-        int idx=0;
-        if( sscanf(str+6,"%d", &idx) ==1)
-        {
-                   
-
+    else if (strncasecmp(str, "FDJUMP",6)==0) {
+        if (strncasecmp(str, "FDJUMP_SCALE",12)==0) {
             char rest[1024];
-            char str1[100],str2[100],str3[100],str4[100],str5[100];
-            int v5,nread;
-
+            char scale[80];
             fgets(rest, 1024, fin);
-            removeCR(rest);
-            psr->nfdJumps++;
-            strcpy(psr->fdjumpStr[psr->nfdJumps],rest);
-            // get the index of the FD parameter
-            psr->fdjumpIdx[psr->nfdJumps]=idx;
-
-
-        
-
-            psr->fitfdJump[psr->nfdJumps]=1; /* Default: fit for fdjump */
-            v5 = -1;
-            nread = sscanf(psr->fdjumpStr[psr->nfdJumps],"%s %s %s %s %s",str1,str2,str3,str4,str5);
-
-            if (strcasecmp(str1,"MJD")==0 || strcasecmp(str1,"FREQ")==0)
-            {
-                if (nread>3)
-                {
-                    sscanf(str4,"%lf",&(psr->fdjumpVal[psr->nfdJumps]));
-                    if (sscanf(str5,"%d",&v5)==1)
-                    {
-                     if (v5!=1) psr->fitfdJump[psr->nfdJumps]=0;
-                    }   
-                    else
-                        psr->fitfdJump[psr->nfdJumps]=0;
-                }
+            sscanf(rest, "%s", scale);
+            if (strncasecmp(scale, "LINEAR",10)==0) {
+                psr->fdjump_log=0; // not log scale
+            } else {
+                psr->fdjump_log=1; // log scale
             }
-            else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
-            {
-                if (nread>2)
+        } else {
+            int idx=0;
+            if (strncasecmp(str, "FDJUMPDM",8)==0) { // Is DMJUMP
+                idx = -2;
+            } else { // Index of regular FDJUMP
+                sscanf(str+6,"%d", &idx);
+            }
+
+            if (idx != 0) {
+                char rest[1024];
+                char str1[100],str2[100],str3[100],str4[100],str5[100];
+                int v5,nread;
+
+                fgets(rest, 1024, fin);
+                removeCR(rest);
+                psr->nfdJumps++;
+                strcpy(psr->fdjumpStr[psr->nfdJumps],rest);
+                // get the index of the FD parameter
+                psr->fdjumpIdx[psr->nfdJumps]=idx;
+
+
+
+
+                psr->fitfdJump[psr->nfdJumps]=1; /* Default: fit for fdjump */
+                v5 = -1;
+                nread = sscanf(psr->fdjumpStr[psr->nfdJumps],"%s %s %s %s %s",str1,str2,str3,str4,str5);
+
+                if (strcasecmp(str1,"MJD")==0 || strcasecmp(str1,"FREQ")==0)
                 {
-                    sscanf(str3,"%lf",&(psr->fdjumpVal[psr->nfdJumps]));
-                    if (sscanf(str4,"%d",&v5)==1)
+                    if (nread>3)
                     {
-                        if (v5!=1) psr->fitfdJump[psr->nfdJumps]=0;
+                        sscanf(str4,"%lf",&(psr->fdjumpVal[psr->nfdJumps]));
+                        if (sscanf(str5,"%d",&v5)==1)
+                        {
+                            if (v5!=1) psr->fitfdJump[psr->nfdJumps]=0;
+                        }   
+                        else
+                            psr->fitfdJump[psr->nfdJumps]=0;
                     }
-                    else
-                        psr->fitfdJump[psr->nfdJumps]=0;
+                }
+                else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
+                {
+                    if (nread>2)
+                    {
+                        sscanf(str3,"%lf",&(psr->fdjumpVal[psr->nfdJumps]));
+                        if (sscanf(str4,"%d",&v5)==1)
+                        {
+                            if (v5!=1) psr->fitfdJump[psr->nfdJumps]=0;
+                        }
+                        else
+                            psr->fitfdJump[psr->nfdJumps]=0;
+                    }
                 }
             }
 
@@ -648,7 +673,27 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 readValue(psr,str,fin,&(psr->param[param_gltd3]),gval-1);
         }
     }
-
+    else if (strstr(str,"NUDOT_AMP_")!=NULL){
+        if (sscanf(str+10,"%d",&gval)==1)
+        {
+            if (gval<psr->param[param_nudot_amp].aSize)
+                readValue(psr,str,fin,&(psr->param[param_nudot_amp]),gval-1);
+        }
+    }
+    else if (strstr(str,"NUDOT_TIME_")!=NULL){
+        if (sscanf(str+11,"%d",&gval)==1)
+        {
+            if (gval<psr->param[param_nudot_transition_time].aSize)
+                readValue(psr,str,fin,&(psr->param[param_nudot_transition_time]),gval-1);
+        }
+    }
+    else if (strstr(str,"NUDOT_EPOCH_")!=NULL){
+        if (sscanf(str+12,"%d",&gval)==1)
+        {
+            if (gval<psr->param[param_nudot_epoch].aSize)
+                readValue(psr,str,fin,&(psr->param[param_nudot_epoch]),gval-1);
+        }
+    }
     else if  (strstr(str,"EXPEP_")!=NULL || strstr(str,"expep_")!=NULL)
     {
         if (sscanf(str+6,"%d",&gval)==1)
@@ -871,9 +916,9 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 readValue(psr,str,fin,&(psr->param[param_dm]),dval);
         }
     }
-    else if (strcasecmp(str,"CM")==0) /* Chromatic noise measure */
+    else if (strcasecmp(str,"CM")==0) /* Constant Chromatic offset */
         readValue(psr,str,fin,&(psr->param[param_cm]),0);
-    else if ((str[0]=='C' || str[0]=='c') &&  /* Higher DM derivatives */
+    else if ((str[0]=='C' || str[0]=='c') &&  /* Higher Chromatic derivatives */
             (str[1]=='M' || str[1]=='m') && isdigit(str[2]))
     {
         int dval;
@@ -883,7 +928,39 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 readValue(psr,str,fin,&(psr->param[param_cm]),dval);
         }
     }
-
+    // Chromatic alternative to DMX; it uses the TNChromIdx for the index.
+    else if (strncasecmp(str,"CHROMX_",7)==0)
+    {
+        int chromxidx;
+        if (sscanf(str+7,"%d",&chromxidx)==1)
+        {
+            //printf("got dmxidx=%d\n", dmxidx);
+            chromxidx--;
+            if (chromxidx<psr->param[param_chromx].aSize)
+                readValue(psr,str,fin,&(psr->param[param_chromx]),chromxidx);
+            if (psr->nchromx < chromxidx+1) psr->nchromx = chromxidx + 1;
+        }
+    }
+    else if (strncasecmp(str,"CHROMXR1_",9)==0)
+    {
+        int chromxidx;
+        if (sscanf(str+9,"%d",&chromxidx)==1)
+        {
+            chromxidx--;
+            if (chromxidx<psr->param[param_chromxr1].aSize)
+                readValue(psr,str,fin,&(psr->param[param_chromxr1]),chromxidx);
+        }
+    }
+    else if (strncasecmp(str,"CHROMXR2_",9)==0)
+    {
+        int chromxidx;
+        if (sscanf(str+9,"%d",&chromxidx)==1)
+        {
+            chromxidx--;
+            if (chromxidx<psr->param[param_chromxr2].aSize)
+                readValue(psr,str,fin,&(psr->param[param_chromxr2]),chromxidx);
+        }
+    }
 
     else if (strcasecmp(str,"TELX")==0)
         readValue(psr,str,fin,&(psr->param[param_telx]),0);
@@ -1658,7 +1735,7 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         ( psr->nTNSECORR )++;
     }
 
-
+    
     /* /---------\
        | TN Noise |
        \---------/ */
@@ -1671,6 +1748,10 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         fscanf(fin,"%d",&(psr->TNRedC));
     else if (strcasecmp(str,"TNRedFLow")==0) /* TempoNest Red noise power law amplitude */
         fscanf(fin,"%lf",&(psr->TNRedFLow));
+    else if (strcasecmp(str,"TNRedFLog")==0)
+        fscanf(fin,"%d",&(psr->TNRed_log_freqs));
+    else if (strcasecmp(str,"TNRedFLog_factor")==0)
+        fscanf(fin,"%lf",&(psr->TNRed_log_factor));
     else if (strcasecmp(str,"TNRedCorner")==0) /* TempoNest Red noise spectral index */
         fscanf(fin,"%lf",&(psr->TNRedCorner));
     else if(strcasecmp(str,"TNsubtractRed")==0)
@@ -1681,8 +1762,14 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         fscanf(fin,"%lf",&(psr->TNDMGam));
     else if (strcasecmp(str,"TNDMC")==0) /* TempoNest Red noise spectral index */
         fscanf(fin,"%d",&(psr->TNDMC));
+    else if (strcasecmp(str,"TNDMFLog")==0)
+        fscanf(fin,"%d",&(psr->TNDM_log_freqs));
+    else if (strcasecmp(str,"TNDMFLog_factor")==0)
+        fscanf(fin,"%lf",&(psr->TNDM_log_factor));
     else if(strcasecmp(str,"TNsubtractDM")==0)
         fscanf(fin,"%d",&(psr->TNsubtractDM));
+    else if(strcasecmp(str, "TNsubtractPoly")==0)
+        fscanf(fin,"%d",&(psr->TNsubtractPoly));
     else if (strcasecmp(str,"TN_QpPeriod")==0) /* Quasi-periodic Timing Noise*/
         fscanf(fin,"%lf",&(psr->TN_QpPeriod));
     else if (strcasecmp(str,"TN_QpLam")==0) /* Quasi-periodic Timing Noise*/
@@ -1709,14 +1796,17 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
       //fprintf(stderr, "here\n");
 	//exit(0);
       }
-    else if (strcasecmp(str,"TNChromIdx")==0) /* TempoNest chromatic Red noise chromatic index */
+    else if (strcasecmp(str,"TNChromIdx")==0 || strcasecmp(str,"CHROM_INDEX")==0) /* TempoNest chromatic Red noise chromatic index */
         fscanf(fin,"%lf",&(psr->TNChromIdx));
     else if(strcasecmp(str,"TNsubtractChrom")==0)
     {
            fscanf(fin,"%d",&(psr->TNsubtractChrom));
             //fprintf(stderr, "here\n");
         //exit(0);
-    }
+    } else if (strcasecmp(str,"TNChromFLog")==0)
+        fscanf(fin,"%d",&(psr->TNChrom_log_freqs));
+    else if (strcasecmp(str,"TNChromFLog_factor")==0)
+        fscanf(fin,"%lf",&(psr->TNChrom_log_factor));
 
     else if(strcasecmp(str,"RNAMP")==0){ /* compatibility with tempo RN notation */
         printf("\nWARNING: Using tempo RNAMP parameter: setting TNRedC to 100!\n");

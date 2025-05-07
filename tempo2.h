@@ -50,8 +50,8 @@
 
 
 #define TEMPO2_h_HASH "$Id$"
-#define TEMPO2_h_VER "2023.05.1"
-#define TEMPO2_h_MAJOR_VER 2023.05
+#define TEMPO2_h_VER "2025.02.1"
+#define TEMPO2_h_MAJOR_VER 2025.02
 #define TEMPO2_h_MINOR_VER 1
 #define TSUN longdouble(4.925490947e-6) /*!< Solar constant for mass calculations. */
 #define MAX_FREQ_DERIVATIVES 13    /*!< F0 -> Fn   where n=10                            */
@@ -79,8 +79,8 @@
 #define MAX_FIT              10000  /*!< Maximum number of parameters to fit for */
 #define MAX_T2EFAC           100    /*!< Maximum number of T2EFACs allowed                */
 #define MAX_T2EQUAD          100    /*!< Maximum number of T2EQUADs allowed               */
-#define MAX_TNEF           50    /*!< Maximum number of TNEFACs allowed                */
-#define MAX_TNEQ          50    /*!< Maximum number of TNEQUADs allowed               */
+#define MAX_TNEF           100    /*!< Maximum number of TNEFACs allowed                */
+#define MAX_TNEQ          100    /*!< Maximum number of TNEQUADs allowed               */
 #define MAX_TNGN	50 /*!< maximum number of TNGroupNoise parameters allowed*/
 #define MAX_TNBN        50 /*maximum number of TNBandNoise parameters allowd*/
 #define MAX_TNECORR       50    /*!< Maximum number of TNECORRss allowed               */
@@ -196,6 +196,8 @@ enum label {
     param_orbifunc,
     param_gltd2,param_gltd3, param_glf0d2, param_glf0d3,
     param_ne_sw_sin,param_ne_sw_ifunc,
+    param_chromx, param_chromxr1, param_chromxr2, // chromatic version of DMX.
+    param_nudot_epoch, param_nudot_amp, param_nudot_transition_time, 
     // ** ADD NEW PARAMETERS ABOVE HERE **
     // THE BELOW LINE MUST BE THE LAST LINE IN THIS ENUM
     param_LAST, /*!< Marker for the last param to be used in for loops  */
@@ -490,6 +492,7 @@ typedef struct observation {
     char flagVal[MAX_FLAGS][MAX_FLAG_LEN];
     int  nFlags;                   
     int  jump[MAX_FLAGS];           /*!< Jump region */
+    double jumpScale[MAX_FLAGS];    /*!< Scale of jump */
     int  obsNjump;                  /*!< Number of jumps for this observation */
     int fdjump[MAX_FLAGS];
     int obsNfdjump;
@@ -615,7 +618,7 @@ typedef struct pulsar {
     int    fitJump[MAX_JUMPS];      /*!< = 1 if fit for jump                                        */
     double jumpValErr[MAX_JUMPS];   /*!< Error on jump                                              */
     char   jumpStr[MAX_JUMPS][MAX_STRLEN]; /*!< String describing jump                              */
-    
+    char   jumpScaled[MAX_JUMPS];   /*!< = 1 if jump is scaled by the flag val                   */
 
     // new parameters for fdjumps
     int    nfdJumps;                  /*!< Number of jumps                                        */
@@ -626,6 +629,7 @@ typedef struct pulsar {
     int    fitfdJump[MAX_JUMPS];      /*!< = 1 if fit for jump                                        */
     double fdjumpValErr[MAX_JUMPS];   /*!< Error on jump                                              */
     char   fdjumpStr[MAX_JUMPS][MAX_STRLEN]; /*!< String describing jump                              */
+    char fdjump_log;                /* Is the fdjumps log scale */
     
     
     
@@ -638,6 +642,7 @@ typedef struct pulsar {
     int    nToffset;
     int    ndmx;                    /*!< Number of DM steps */
     int    nSx;                     /*!< Number of Scatter steps */
+    int    nchromx;                 /*!< Number of Chromatic steps */
     double fitChisq;                /*!< Chisq value from the fit */
     int    fitNfree;                /*!< Number of degrees of freedom in fit */
     int    globalNfit;              /*!< Total number of parameters in the fit */
@@ -898,10 +903,21 @@ typedef struct pulsar {
     double TN_QpLam;
     double TN_QpRatio;
 
+    int TNRed_log_freqs;
+    double TNRed_log_factor;
+
     double ne_sw_ifuncT[MAX_IFUNC];
     double ne_sw_ifuncV[MAX_IFUNC];
     double ne_sw_ifuncE[MAX_IFUNC];
     int ne_sw_ifuncN;
+
+    int TNDM_log_freqs;
+    double TNDM_log_factor;
+        int TNChrom_log_freqs;
+    double TNChrom_log_factor;
+    char TNsubtractPoly;
+
+    
 
 } pulsar;
 
