@@ -1,4 +1,4 @@
-# UTC(GPS_UNSO) UTC
+# UTC(GPS_USNO) UTC
 # Corrections from the GPS predictions of UTC to UTC.
 # Leap seconds do not appear here.
 #
@@ -11,7 +11,7 @@
 # 1993. Those are available in a separate file.
 #
 # The data in this file is obtained from
-# https://webtai.bipm.org/ftp/pub/tai/other-products/utcgnss/utc-gnss
+# https://webtai.bipm.org/ftp/pub/tai/other-products/utcgnss/utc-gps
 # which is updated monthly.
 #
 55559.00000 -0.000000008200
