@@ -295,7 +295,7 @@ extern "C" int graphicalInterface(int argc,char *argv[],pulsar *psr,int *npsr)
     float lockx1=0,lockx2=0;
     float locky1=0,locky2=0;
     int   xplot=3;
-    int   yplot=1;
+    int   yplot=2;
     int   publish=0;
     int   menu=3;
     int   nohead=0;
