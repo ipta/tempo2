@@ -1124,6 +1124,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
         /* Plot the residuals */
         if (noreplot==0)
         {
+	    cpgbbuf();
             cpgsch(fontSize);
             if (menu>0 && graphics!=2)
             {
@@ -1323,6 +1324,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     cpgline(2,px,py);
                 }			
             }
+	    cpgebuf();
         }
         noreplot=0;
         if(plotPoints==1)
