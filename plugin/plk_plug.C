@@ -814,7 +814,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
     cpgbeg(0,gr,1,1);
     
     float pap_w = 0.0f, pap_a = 0.0f;
-    cpgqpap(&pap_w, &pap_a);        /* ask device its current paper size */
+    cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
     if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
     cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
     
@@ -2429,7 +2429,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     cpgend();
                     cpgbeg(0,"?",1,1);
 		    float pap_w = 0.0f, pap_a = 0.0f;
-		    cpgqpap(&pap_w, &pap_a);        /* ask device its current paper size */
+		    cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
 		    if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
 		    cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
                     //	  	  cpgpap(0,0.4);
@@ -2766,7 +2766,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                         cpgend();
                         cpgbeg(0,"/xs",1,1);
 			float pap_w = 0.0f, pap_a = 0.0f;
-			cpgqpap(&pap_w, &pap_a);        /* ask device its current paper size */
+			cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
 			if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
 			cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
                         cpgscf(fontType);
@@ -2813,7 +2813,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
             cpgend();
             cpgbeg(0,"/xs",1,1);
 	    float pap_w = 0.0f, pap_a = 0.0f;
-	    cpgqpap(&pap_w, &pap_a);        /* ask device its current paper size */
+	    cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
 	    if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
 	    cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
             cpgscf(fontType);
@@ -3596,7 +3596,7 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         cpgend();
         cpgbeg(0,"/cps",1,1);
 	float pap_w = 0.0f, pap_a = 0.0f;
-	cpgqpap(&pap_w, &pap_a);        /* ask device its current paper size */
+	cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
 	if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
 	cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
         cpgscf(fontType);
