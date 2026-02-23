@@ -812,7 +812,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
     
     /* Obtain a graphical PGPLOT window */
     cpgbeg(0,gr,1,1);
-    cpgpap(0,aspect);
+    cpgpap(10,aspect);
     cpgscf(fontType);
     cpgslw(lineWidth);
     cpgscrn(0,bkgrdColour,&out);
@@ -2423,7 +2423,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 else if (key=='g') {  /* Change graphics device */
                     cpgend();
                     cpgbeg(0,"?",1,1);
-                    cpgpap(0,aspect);
+                    cpgpap(10,aspect);
                     //	  	  cpgpap(0,0.4);
                     cpgscf(fontType);
                     cpgslw(lineWidth);
@@ -2757,7 +2757,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                         menu=3;
                         cpgend();
                         cpgbeg(0,"/xs",1,1);
-                        cpgpap(0,aspect);
+                        cpgpap(10,aspect);
                         cpgscf(fontType);
                         cpgslw(lineWidth);
                         cpgscrn(0,bkgrdColour,&out);
@@ -2801,7 +2801,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
         {
             cpgend();
             cpgbeg(0,"/xs",1,1);
-            cpgpap(0,aspect);
+            cpgpap(10,aspect);
             cpgscf(fontType);
             cpgslw(lineWidth);
             cpgscrn(0,bkgrdColour,&out);
@@ -3581,7 +3581,7 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         int out;
         cpgend();
         cpgbeg(0,"/cps",1,1);
-        cpgpap(0,aspect);
+        cpgpap(10,aspect);
         cpgscf(fontType);
         cpgslw(lineWidth);
         //      cpgscrn(0,bkgrdColour,&out);
