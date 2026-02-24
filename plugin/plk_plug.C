@@ -811,12 +811,23 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 
     
     /* Obtain a graphical PGPLOT window */
-    cpgbeg(0,gr,1,1);
+    cpgbeg(0, gr, 1, 1);
     
-    float pap_w = 0.0f, pap_a = 0.0f;
-    cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
-    if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
-    cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
+    /* giza rejects cpgpap(width<=0).  PGPLOT allows width=0 as "device default". */
+    {
+        float x1, x2, y1, y2;
+        cpgqvsz(1, &x1, &x2, &y1, &y2);          /* inches */
+        float pap_w = fabsf(x2 - x1);
+        if (!(pap_w > 0.0f)) pap_w = 8.0f;       /* fallback: sane nonzero width */
+    
+        float pap_a = aspect;
+        if (!(pap_a > 0.0f)) {
+            float pap_h = fabsf(y2 - y1);
+            pap_a = (pap_w > 0.0f) ? (pap_h / pap_w) : 0.8f;
+        }
+    
+        cpgpap(pap_w, pap_a);
+    }
     
     cpgscf(fontType);
     cpgslw(lineWidth);
@@ -2429,9 +2440,21 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     cpgend();
                     cpgbeg(0,"?",1,1);
 		    float pap_w = 0.0f, pap_a = 0.0f;
-		    cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
-		    if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
-		    cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
+                    /* giza rejects cpgpap(width<=0).  PGPLOT allows width=0 as "device default". */
+                    {
+                        float x1, x2, y1, y2;
+                        cpgqvsz(1, &x1, &x2, &y1, &y2);          /* inches */
+                        float pap_w = fabsf(x2 - x1);
+                        if (!(pap_w > 0.0f)) pap_w = 8.0f;       /* fallback: sane nonzero width */
+                    
+                        float pap_a = aspect;
+                        if (!(pap_a > 0.0f)) {
+                            float pap_h = fabsf(y2 - y1);
+                            pap_a = (pap_w > 0.0f) ? (pap_h / pap_w) : 0.8f;
+                        }
+                    
+                        cpgpap(pap_w, pap_a);
+                    }
                     //	  	  cpgpap(0,0.4);
                     cpgscf(fontType);
                     cpgslw(lineWidth);
@@ -2765,10 +2788,22 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                         menu=3;
                         cpgend();
                         cpgbeg(0,"/xs",1,1);
-			float pap_w = 0.0f, pap_a = 0.0f;
-			cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
-			if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
-			cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
+                        /* giza rejects cpgpap(width<=0).  PGPLOT allows width=0 as "device default". */
+                        {
+                            float x1, x2, y1, y2;
+                            cpgqvsz(1, &x1, &x2, &y1, &y2);          /* inches */
+                            float pap_w = fabsf(x2 - x1);
+                            if (!(pap_w > 0.0f)) pap_w = 8.0f;       /* fallback: sane nonzero width */
+                        
+                            float pap_a = aspect;
+                            if (!(pap_a > 0.0f)) {
+                                float pap_h = fabsf(y2 - y1);
+                                pap_a = (pap_w > 0.0f) ? (pap_h / pap_w) : 0.8f;
+                            }
+                        
+                            cpgpap(pap_w, pap_a);
+                        }
+		    
                         cpgscf(fontType);
                         cpgslw(lineWidth);
                         cpgscrn(0,bkgrdColour,&out);
@@ -2812,10 +2847,22 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
         {
             cpgend();
             cpgbeg(0,"/xs",1,1);
-	    float pap_w = 0.0f, pap_a = 0.0f;
-	    cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
-	    if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
-	    cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
+            /* giza rejects cpgpap(width<=0).  PGPLOT allows width=0 as "device default". */
+            {
+                float x1, x2, y1, y2;
+                cpgqvsz(1, &x1, &x2, &y1, &y2);          /* inches */
+                float pap_w = fabsf(x2 - x1);
+                if (!(pap_w > 0.0f)) pap_w = 8.0f;       /* fallback: sane nonzero width */
+            
+                float pap_a = aspect;
+                if (!(pap_a > 0.0f)) {
+                    float pap_h = fabsf(y2 - y1);
+                    pap_a = (pap_w > 0.0f) ? (pap_h / pap_w) : 0.8f;
+                }
+            
+                cpgpap(pap_w, pap_a);
+            }
+		    
             cpgscf(fontType);
             cpgslw(lineWidth);
             cpgscrn(0,bkgrdColour,&out);
@@ -3595,10 +3642,22 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         int out;
         cpgend();
         cpgbeg(0,"/cps",1,1);
-	float pap_w = 0.0f, pap_a = 0.0f;
-	cpgpap(&pap_w, &pap_a);        /* ask device its current paper size */
-	if (pap_w <= 0.0f) pap_w = 10.0f; /* fallback only if Giza returns junk */
-	cpgpap(pap_w, aspect);          /* keep width, set aspect safely */
+        /* giza rejects cpgpap(width<=0).  PGPLOT allows width=0 as "device default". */
+        {
+            float x1, x2, y1, y2;
+            cpgqvsz(1, &x1, &x2, &y1, &y2);          /* inches */
+            float pap_w = fabsf(x2 - x1);
+            if (!(pap_w > 0.0f)) pap_w = 8.0f;       /* fallback: sane nonzero width */
+        
+            float pap_a = aspect;
+            if (!(pap_a > 0.0f)) {
+                float pap_h = fabsf(y2 - y1);
+                pap_a = (pap_w > 0.0f) ? (pap_h / pap_w) : 0.8f;
+            }
+        
+            cpgpap(pap_w, pap_a);
+        }
+		    
         cpgscf(fontType);
         cpgslw(lineWidth);
         //      cpgscrn(0,bkgrdColour,&out);
