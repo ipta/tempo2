@@ -85,7 +85,7 @@ void overPlotShapiro(pulsar *psr,float offset,longdouble centreEpoch);
 void binResiduals(pulsar *psr,int npsr,float *x,float *y,int count,int *id, int *overN,
         float overX[], float overY[], float overYe[],int xplot,int yplot,
         float errBar[],double unitFlag,int plotPhase,double centreEpoch);
-void drawMenu(pulsar *psr,float plotx1,float plotx2,float ploty1,float ploty2,int menu,int paramOffset);
+void drawMenu(pulsar *psr,float plotx1,float plotx2,float ploty1,float ploty2,int menu,int paramOffset, int plk_mode);
 void drawMenu3(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,int menu,int xplot,int yplot);
 void slaClyd ( int iy, int im, int id, int *ny, int *nd, int *jstat );
 void slaCalyd ( int iy, int im, int id, int *ny, int *nd, int *j );
@@ -96,7 +96,7 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         float zoomX1,float zoomX2,longdouble origStart,longdouble origFinish,longdouble centreEpoch,
         int menu,int plotx,char parFile[][MAX_FILELEN], char timFile[][MAX_FILELEN],int argc,char *argv[],int *xplot,int *yplot,int *graphics,char highlightID[100][100],char  highlightVal[100][100],int *highlightNum,float aspect,int fontType,int lineWidth,char *bkgrdColour,char *lineColour,int *jumpOffset);
 void setLabel(char *ystr,int yplot,int plotPhase,double unitFlag,longdouble centreEpoch,char *userValStr,char *flagStr);
-void drawOption(float x,float y,const char *str,int fit);
+void drawOption(float x, float y, const char *str, int fit, int colour);
 void swapFit(pulsar *psr,int par,int k,int button);
 void newTim(pulsar *psr);
 void plotFITWAVES_spec();
@@ -1133,7 +1133,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 cpgsvp(0.0,1.0,0.8,1.0);
                 cpgswin(0,1,0,1);
                 /*	    cpgbox("",0.0,0,"",0.0,0); */
-                drawMenu(psr,plotx1,plotx2,ploty1,ploty2,menu,paramOffset);
+                drawMenu(psr,plotx1,plotx2,ploty1,ploty2,menu,paramOffset,plk_mode);
                 if (menu==3)
                 {
                     cpgsvp(0.0,0.3,0.3,0.8);
@@ -3726,13 +3726,15 @@ void swapFit(pulsar *psr,int par,int k,int button)
     }
 }
 
-void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,int menu,int paramOffset)
+void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,int menu,int paramOffset, int plk_mode)
 {
     float x1,y1,x2,y2,xscale,yscale,x3,x4,y3,y4;
     float x0,y0,xscale2,yscale2;
     float mx,my;
     float xpos,ypos;
     char key;
+    int colour=plk_mode+2;
+    while (colour > 13) colour-=10;
 
     /*  cpgrect(plotx1,plotx1+2,ploty1,10); */
     /*  cpgqvp(3,&x1,&x2,&y1,&y2);
@@ -3749,65 +3751,65 @@ void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,i
         printf("Have %f %f\n",mx,my); */
     if (menu==1)
     {
-        drawOption(0,0.9,"RAJ",psr->param[param_raj].fitFlag[0]);
-        drawOption(0.1,0.90,"DECJ",psr->param[param_decj].fitFlag[0]);
-        drawOption(0.2,0.90,"F0",psr->param[param_f].fitFlag[0]);
-        drawOption(0.3,0.90,"F1",psr->param[param_f].fitFlag[1]);
-        drawOption(0.4,0.90,"F2",psr->param[param_f].fitFlag[2]);
-        drawOption(0.5,0.90,"DM",psr->param[param_dm].fitFlag[0]);
-        drawOption(0.6,0.90,"PMRA",psr->param[param_pmra].fitFlag[0]);
-        drawOption(0.7,0.90,"PMDEC",psr->param[param_pmdec].fitFlag[0]);
-        drawOption(0.8,0.90,"PX",psr->param[param_px].fitFlag[0]);
+        drawOption(0,0.9,"RAJ",psr->param[param_raj].fitFlag[0],colour);
+        drawOption(0.1,0.90,"DECJ",psr->param[param_decj].fitFlag[0],colour);
+        drawOption(0.2,0.90,"F0",psr->param[param_f].fitFlag[0],colour);
+        drawOption(0.3,0.90,"F1",psr->param[param_f].fitFlag[1],colour);
+        drawOption(0.4,0.90,"F2",psr->param[param_f].fitFlag[2],colour);
+        drawOption(0.5,0.90,"DM",psr->param[param_dm].fitFlag[0],colour);
+        drawOption(0.6,0.90,"PMRA",psr->param[param_pmra].fitFlag[0],colour);
+        drawOption(0.7,0.90,"PMDEC",psr->param[param_pmdec].fitFlag[0],colour);
+        drawOption(0.8,0.90,"PX",psr->param[param_px].fitFlag[0],colour);
         if (strcmp(psr->binaryModel,"ELL1")==0 
                 || (strcmp(psr->binaryModel,"T2")==0 && psr->param[param_eps1].paramSet[0]==1))
         {
-            drawOption(0.2,0.70,"TASC",psr->param[param_tasc].fitFlag[0]);
-            drawOption(0.3,0.70,"EPS1",psr->param[param_eps1].fitFlag[0]);  
-            drawOption(0.4,0.70,"EPS2",psr->param[param_eps2].fitFlag[0]);
-            drawOption(0.5,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0]);    
-            drawOption(0.7,0.70,"KOM",psr->param[param_kom].fitFlag[0]);
-            drawOption(0.8,0.70,"KIN",psr->param[param_kin].fitFlag[0]);
-            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0]);
-            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0]);
+            drawOption(0.2,0.70,"TASC",psr->param[param_tasc].fitFlag[0],colour);
+            drawOption(0.3,0.70,"EPS1",psr->param[param_eps1].fitFlag[0],colour);  
+            drawOption(0.4,0.70,"EPS2",psr->param[param_eps2].fitFlag[0],colour);
+            drawOption(0.5,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0],colour);    
+            drawOption(0.7,0.70,"KOM",psr->param[param_kom].fitFlag[0],colour);
+            drawOption(0.8,0.70,"KIN",psr->param[param_kin].fitFlag[0],colour);
+            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0],colour);
+            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0],colour);
         }
         else if (strcmp(psr->binaryModel,"T2")==0)
         {
-            drawOption(0.2,0.70,"T0",psr->param[param_t0].fitFlag[0]);
-            drawOption(0.3,0.70,"ECC",psr->param[param_ecc].fitFlag[0]);  
-            drawOption(0.4,0.70,"OM",psr->param[param_om].fitFlag[0]);
-            drawOption(0.5,0.70,"OMDOT",psr->param[param_omdot].fitFlag[0]);
-            drawOption(0.6,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0]);
-            drawOption(0.7,0.70,"KOM",psr->param[param_kom].fitFlag[0]);
-            drawOption(0.8,0.70,"KIN",psr->param[param_kin].fitFlag[0]);
-            drawOption(0.9,0.90,"M2",psr->param[param_m2].fitFlag[0]);
-            drawOption(0.9,0.70,"SINI",psr->param[param_sini].fitFlag[0]);
-            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0]);
-            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0]);
+            drawOption(0.2,0.70,"T0",psr->param[param_t0].fitFlag[0],colour);
+            drawOption(0.3,0.70,"ECC",psr->param[param_ecc].fitFlag[0],colour);  
+            drawOption(0.4,0.70,"OM",psr->param[param_om].fitFlag[0],colour);
+            drawOption(0.5,0.70,"OMDOT",psr->param[param_omdot].fitFlag[0],colour);
+            drawOption(0.6,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0],colour);
+            drawOption(0.7,0.70,"KOM",psr->param[param_kom].fitFlag[0],colour);
+            drawOption(0.8,0.70,"KIN",psr->param[param_kin].fitFlag[0],colour);
+            drawOption(0.9,0.90,"M2",psr->param[param_m2].fitFlag[0],colour);
+            drawOption(0.9,0.70,"SINI",psr->param[param_sini].fitFlag[0],colour);
+            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0],colour);
+            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0],colour);
         }
         else if (psr->param[param_pb].paramSet[0] == 1)
         {
-            drawOption(0.2,0.70,"T0",psr->param[param_t0].fitFlag[0]);
-            drawOption(0.3,0.70,"ECC",psr->param[param_ecc].fitFlag[0]);  
-            drawOption(0.4,0.70,"OM",psr->param[param_om].fitFlag[0]);
-            drawOption(0.5,0.70,"OMDOT",psr->param[param_omdot].fitFlag[0]);
-            drawOption(0.6,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0]);
-            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0]);
-            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0]);
+            drawOption(0.2,0.70,"T0",psr->param[param_t0].fitFlag[0],colour);
+            drawOption(0.3,0.70,"ECC",psr->param[param_ecc].fitFlag[0],colour);  
+            drawOption(0.4,0.70,"OM",psr->param[param_om].fitFlag[0],colour);
+            drawOption(0.5,0.70,"OMDOT",psr->param[param_omdot].fitFlag[0],colour);
+            drawOption(0.6,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0],colour);
+            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0],colour);
+            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0],colour);
         }
         else 
             if(debugFlag==1) printf("No binary model\n");
     }
     else if (menu==2)
     {
-        drawOption(0.0,0.90,"F0",psr->param[param_f].fitFlag[0]);
-        drawOption(0.1,0.90,"F1",psr->param[param_f].fitFlag[1]);
-        drawOption(0.2,0.90,"F2",psr->param[param_f].fitFlag[2]);
-        drawOption(0.3,0.90,"F3",psr->param[param_f].fitFlag[3]);
-        drawOption(0.4,0.90,"F4",psr->param[param_f].fitFlag[4]);
-        drawOption(0.5,0.90,"F5",psr->param[param_f].fitFlag[5]);
-        drawOption(0.6,0.90,"F6",psr->param[param_f].fitFlag[6]);
-        drawOption(0.7,0.90,"F7",psr->param[param_f].fitFlag[7]);
-        drawOption(0.8,0.90,"F8",psr->param[param_f].fitFlag[8]);
+        drawOption(0.0,0.90,"F0",psr->param[param_f].fitFlag[0],colour);
+        drawOption(0.1,0.90,"F1",psr->param[param_f].fitFlag[1],colour);
+        drawOption(0.2,0.90,"F2",psr->param[param_f].fitFlag[2],colour);
+        drawOption(0.3,0.90,"F3",psr->param[param_f].fitFlag[3],colour);
+        drawOption(0.4,0.90,"F4",psr->param[param_f].fitFlag[4],colour);
+        drawOption(0.5,0.90,"F5",psr->param[param_f].fitFlag[5],colour);
+        drawOption(0.6,0.90,"F6",psr->param[param_f].fitFlag[6],colour);
+        drawOption(0.7,0.90,"F7",psr->param[param_f].fitFlag[7],colour);
+        drawOption(0.8,0.90,"F8",psr->param[param_f].fitFlag[8],colour);
     }
     else if (menu==3)
     {
@@ -3839,7 +3841,7 @@ void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,i
                             strcmp(psr[0].param[i].shortlabel[j],"POSEPOCH")!=0)
                     {
                         if (ypos+paramOffset*0.2 <= 0.9 && ypos+paramOffset*0.2 >= 0.5)
-                            drawOption(xpos,ypos+paramOffset*0.2,psr[0].param[i].shortlabel[j],psr->param[i].fitFlag[j]);
+                            drawOption(xpos,ypos+paramOffset*0.2,psr[0].param[i].shortlabel[j],psr->param[i].fitFlag[j],colour);
                         xpos+=0.1;
                         if (xpos > 0.9)
                         {
@@ -3867,6 +3869,11 @@ void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,i
     cpgrect(0.1,0.18,0.28,0.3+0.1); cpgsci(0); cpgtext(0.1,0.30,"New par"); cpgsci(1);
     cpgrect(0.2,0.28,0.28,0.3+0.1); cpgsci(0); cpgtext(0.2,0.30,"New tim"); cpgsci(1);
     cpgrect(0.3,0.38,0.28,0.3+0.1); cpgsci(0); cpgtext(0.3,0.30,"Restart"); cpgsci(1);
+    if (plk_mode != 0) {
+        char mode_string[100];
+        if (plk_mode == 1) sprintf(mode_string, "PLK Mode %d", plk_mode);
+        cpgtext(0,0.12,mode_string);
+    }
     /*  cpgrect(0.4,0.48,0.28,0.3+0.1); cpgsci(0); cpgtext(0.4,0.50,"Undo"); cpgsci(1);*/
 
 }
@@ -4039,10 +4046,10 @@ void drawAxisSel(float x,float y,const char *str,int sel1,int sel2)
     cpgrect(x+0.6,x+0.65,y,y-0.04); 
     cpgsci(1);
 }
-void drawOption(float x,float y,const char *str,int fit)
+void drawOption(float x,float y,const char *str,int fit,int colour)
 {
     if (fit==0) cpgsci(1);
-    else cpgsci(2);
+    else cpgsci(colour);
     cpgrect(x,x+0.015,y,y+0.08);
     cpgsci(1);
     if (strlen(str) > 7)
