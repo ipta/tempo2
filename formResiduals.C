@@ -437,6 +437,36 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
         tnmean=longdouble(0.0);
         ntnmean=0;
 
+
+/*        int closest_to_centre_i=-1;
+        // find the centre ToA for pulse number reference. This should be the same ToA used for TZR computation later.
+        if (((double)psr[p].param[param_track].val[0] == -2) && psr[p].nobs > 0) {
+            longdouble centrePos;
+            longdouble closestV,check;
+            centrePos = (psr[p].param[param_start].val[0]+
+                    psr[p].param[param_finish].val[0])/longdouble(2.0);
+
+            for (i=0;i<psr[p].nobs;i++)
+            {
+                if (psr[p].obsn[i].deleted==0)
+                {
+                    check = fabs(psr[p].obsn[i].sat-centrePos);
+                    if (closest_to_centre_i==-1 || (check < closestV))
+                    {
+                        closestV = check;
+                        closest_to_centre_i = i;
+                    }
+                }
+            }
+            if (closest_to_centre_i==-1)
+            {
+                closest_to_centre_i=0;
+            }
+        }*/
+
+
+
+
         if(psr[p].refphs==REFPHS_TZR){
             // reinstate the extra TZR observation so we can compute the reference phase
             if (psr[p].nobs==MAX_OBSN){
@@ -446,6 +476,8 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
             psr[p].nobs++;
             memcpy(&(psr[p].obsn[psr[p].nobs-1]),&(psr[p].tzrobs),sizeof(observation));
         }
+
+
 
         for (i=0;i<psr[p].nobs;i++)
         {
