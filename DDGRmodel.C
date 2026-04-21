@@ -362,8 +362,8 @@ void mass2dd(double am,double am2,double x,double ecc,double an,double *arr,doub
 
 
     *si=x/(*ar);
-    *xk=3.0*m/((*arr)*(1.0-ecc*ecc));
-    *gamma = ecc*m2*(m1+2*m2)/(an*(*arr)*m);
+    *xk=3.0*m/((arr0)*(1.0-ecc*ecc)); // use the Keplerian value of arr for consistency
+    *gamma = ecc*m2*(m1+2*m2)/(an*(arr0)*m); // use the Keplerian value of arr for consistency
     *pbdot = -(96.0*2.0*M_PI/5.0)*pow(an,5.0/3.0)*pow(1.0-pow(ecc,2),-3.5)
         * (1+(73.0/24)*pow(ecc,2) + (37.0/96)*pow(ecc,4)) * m1*m2*pow(m,-1.0/3.0);
 }
