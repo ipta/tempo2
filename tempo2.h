@@ -919,7 +919,7 @@ typedef struct pulsar {
     double TNChrom_log_factor;
     char TNsubtractPoly;
 
-    
+    void *binary_model_cache; // Cache for binary model calculations, keyed by a hash of the parameters
 
 } pulsar;
 
@@ -1135,7 +1135,6 @@ extern "C" {
 
 void refphs_init(pulsar* psr, int nps);
 void refphs_clean(pulsar* psr, int nps);
-
 #ifdef __cplusplus
 }
 #endif

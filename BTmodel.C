@@ -31,10 +31,15 @@
 #include <stdlib.h>
 #include <math.h>
 #include "tempo2.h"
+#include "t2fit.h"
+
+#include <unordered_map>
 
 /* Based on bnrybt.f, only considering one orbit */
 
-double BTmodel(pulsar *psr,int p,int ipos,int param)
+
+
+double BTmodel(pulsar *psr,int p,int ipos, int param)
 {
     double torb;
     double tt0;
@@ -57,6 +62,11 @@ double BTmodel(pulsar *psr,int p,int ipos,int param)
 
     if (displayCVSversion == 1) CVSdisplayVersion("BTmodel.C","BTmodel()",CVS_verNum);
 
+    std::unordered_map<uint64_t, double> *cache = static_cast<std::unordered_map<uint64_t, double>*>(psr[p].binary_model_cache);
+    uint64_t cacheKey = t2Fit_cachekey(p, ipos, param);
+    if (cache->find(cacheKey) != cache->end()) {
+        return cache->at(cacheKey);
+    }
 
     tt0 = (psr[p].obsn[ipos].bbat - psr[p].param[param_t0].val[0])*SECDAY;
 
@@ -116,29 +126,25 @@ double BTmodel(pulsar *psr,int p,int ipos,int param)
 
     torb = -q+(2*M_PI/pb)*q*r*s + torb;
 
-    if (param==-1) return torb;
 
-    if (param==param_pb)
-        return -2.0*M_PI*r*s/pb*SECDAY*tt0/(SECDAY*pb) * SECDAY;  /* fctn(12+j) */
-    else if (param==param_a1)
-        return (som*(cbe-ecc) + com*sbe*sqrt(tt));                /* fctn(9+j) */
-    else if (param==param_ecc)
-        return -(alpha*(1.0+sbe*sbe-ecc*cbe)*tt - beta*(cbe-ecc)*sbe)*s/tt; /* fctn(10+j) */
-    else if (param==param_om)
-        return asini*(com*(cbe-ecc) - som*sqrt(tt)*sbe);          /* fctn(13+j) */
-    else if (param==param_t0)
-        return -2.0*M_PI/pb*r*s*SECDAY;                           /* fctn(11+j) */
-    else if (param==param_pbdot)
-        return 0.5*(-2.0*M_PI*r*s/pb*SECDAY*tt0/(SECDAY*pb))*tt0; /* fctn(18+j) */
-    else if (param==param_a1dot)
-        return (som*(cbe-ecc) + com*sbe*sqrt(tt))*tt0;            /* fctn(24+j) */
-    else if (param==param_omdot)
-        return asini*(com*(cbe-ecc) - som*sqrt(tt)*sbe)*tt0;      /* fctn(14+j) */
-    else if (param==param_edot)                            
-        return (-(alpha*(1.0+sbe*sbe-ecc*cbe)*tt - beta*(cbe-ecc)*sbe)*s/tt)*tt0; /* fctn(25+j) */
-    else if (param==param_gamma) 
-        return sbe;                                               /* fctn(15+j) */
-    return 0.0;
+    (*cache)[t2Fit_cachekey(p, ipos, -1)] = torb;
+    (*cache)[t2Fit_cachekey(p,ipos,param_pb)] = -2.0*M_PI*r*s/pb*SECDAY*tt0/(SECDAY*pb) * SECDAY;  /* fctn(12+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_a1)] = (som*(cbe-ecc) + com*sbe*sqrt(tt));                /* fctn(9+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_ecc)] = -(alpha*(1.0+sbe*sbe-ecc*cbe)*tt - beta*(cbe-ecc)*sbe)*s/tt; /* fctn(10+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_om)] = asini*(com*(cbe-ecc) - som*sqrt(tt)*sbe);          /* fctn(13+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_t0)] = -2.0*M_PI/pb*r*s*SECDAY;                           /* fctn(11+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_pbdot)] = 0.5*(-2.0*M_PI*r*s/pb*SECDAY*tt0/(SECDAY*pb))*tt0; /* fctn(18+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_a1dot)] = (som*(cbe-ecc) + com*sbe*sqrt(tt))*tt0;            /* fctn(24+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_omdot)] = asini*(com*(cbe-ecc) - som*sqrt(tt)*sbe)*tt0;      /* fctn(14+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_edot)] = (-(alpha*(1.0+sbe*sbe-ecc*cbe)*tt - beta*(cbe-ecc)*sbe)*s/tt)*tt0; /* fctn(25+j) */
+    (*cache)[t2Fit_cachekey(p,ipos,param_gamma)] = sbe;                                               /* fctn(15+j) */
+
+    if (cache->find(cacheKey) != cache->end()) {
+        return cache->at(cacheKey);
+    } else {
+        logerr("BTmodel: cache key not found (Unknown parameter) for p=%d, ipos=%d, param=%d\n", p, ipos, param);
+        return 0.0;
+    }
 }
 
 void updateBT(pulsar *psr,double val,double err,int pos)

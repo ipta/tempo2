@@ -37,6 +37,8 @@
 #include "shapelet.h"
 #include <vector>
 #include <algorithm>
+#include <unordered_map>
+
 /* Form the timing residuals from the timing model and the barycentric arrival times */
 void residualTracking(pulsar *psr);
 
@@ -478,6 +480,8 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
         }
 
 
+        std::unordered_map<uint64_t, double> *binary_model_cache = static_cast<std::unordered_map<uint64_t, double>*>(psr[p].binary_model_cache);
+        binary_model_cache->clear(); // clear the binary model cache for this pulsar, as the parameters may have changed.   
 
         for (i=0;i<psr[p].nobs;i++)
         {

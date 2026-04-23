@@ -35,6 +35,7 @@
 #include <string.h>
 #include "tempo2.h"
 #include "TKmatrix.h"
+#include <unordered_map>
 
 void initialise(pulsar *psr,int noWarnings)
 {
@@ -102,6 +103,9 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
 
 
     psr->covar = malloc_blas(MAX_FIT,MAX_FIT);
+
+    psr->binary_model_cache = static_cast<void*>(new std::unordered_map<uint64_t, double>()); // initialize the binary model cache for this pulsar
+
 
     strcpy(psr->eopc04_file,"/earth/eopc04_IAU2000.62-now");
     strcpy(psr->filterStr,"");

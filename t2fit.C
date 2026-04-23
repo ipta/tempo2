@@ -13,7 +13,7 @@
 #include <assert.h>
 #include <enum_str.h>
 #include <vector>
-
+#include <map>
 
 
 /**********
@@ -566,9 +566,7 @@ void t2fit_postfit(pulsar* psr, int npsr){
      * Need to squareroot the TN error bars.
      */
     for (int ipsr = 0; ipsr < npsr; ++ipsr){
-        
-        
-
+             
         if (psr[ipsr].TNRedAmp && psr[ipsr].TNRedGam) {
             for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
                 psr[ipsr].obsn[iobs].TNRedErr = sqrt(psr[ipsr].obsn[iobs].TNRedErr);
@@ -1979,6 +1977,9 @@ int t2Fit_getParamMatrixRow(const FitInfo &fitinfo, const int ipsr, const param_
 }
 
 
+uint64_t t2Fit_cachekey(int p, int ipos, int param) {
+    return (uint64_t)p + (uint64_t)ipos * MAX_PSR + (uint64_t)(param+1) * MAX_PSR * MAX_OBSN;
+}
 
 
 
@@ -2212,5 +2213,4 @@ void TKleastSquares_svd_passN(double *x,double *y,double *sig2,int n,double *p,d
 }
 
 // END OF LEGACY ROUTINES
-
 

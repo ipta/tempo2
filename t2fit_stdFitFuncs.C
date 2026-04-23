@@ -118,7 +118,6 @@ void t2UpdateFunc_stdFreq(pulsar *psr, int ipsr ,param_label label,int k, double
 
 
 
-
 /**
  * Binary models - need to select on psr[ipsr].binaryModel
  */

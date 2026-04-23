@@ -22,3 +22,7 @@ double t2Fit_getParamDeriv(pulsar* psr, const param_label fit_param, const doubl
 int t2Fit_getParamMatrixRow(const FitInfo &fitinfo, const int ipsr, const param_label fit_param, const int k);
 
 
+uint64_t t2Fit_cachekey(int p, int ipos, int param);
+
+
+
