@@ -4733,10 +4733,22 @@ int setPlot(float *x,int count,pulsar *psr,int iobs,double unitFlag,int plotPhas
     }
     else if (plot==19)
       {
-	double freq=(double) psr[0].obsn[iobs].freqSSB;
-	//fprintf(stderr, "%.3e\n", psr[0].obsn[iobs].TNChromErr*powf(freq/1e9,2));
-	double index=psr[0].TNChromIdx;
-	x[count]=(float)psr[0].obsn[iobs].TNChromSignal*powf(freq/1.4e9,index);
+        double freq=(double) psr[0].obsn[iobs].freqSSB;
+        longdouble yrs = (psr[0].obsn[iobs].sat - psr[0].param[param_dmepoch].val[0])/365.25;
+        longdouble arg = 1.0;
+        double cmDot=0;
+        double cmDotErr=0;
+        double series_fac=1.0;
+        for (int d=1;d<9;d++){
+            arg *= yrs;
+            if (psr[0].dm_series_type == series_taylor_pn) {
+                series_fac *= d;
+            }
+            if (psr[0].param[param_cm].paramSet[d]==1){
+                cmDot+=(double)(psr[0].param[param_cm].val[d]*arg/series_fac);
+            }
+        }	double index=psr[0].TNChromIdx;
+	    x[count]=(float)psr[0].obsn[iobs].TNChromSignal*powf(freq/1.4e9,index) + cmDot;
       }
 
 
