@@ -1566,7 +1566,7 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                     fprintf(fout2,"TNsubtractRed 1\n");
 
                 }
-                if (psr[p].TNsubtractPoly ==1){
+                if (psr[p].TNsubtractPoly != 0){
                     fprintf(fout2,"TNsubtractPoly %d\n", psr[p].TNsubtractPoly);
 
                 }

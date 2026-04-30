@@ -6,11 +6,124 @@
 #include "shapelet.h"
 #include "enum_str.h"
 
+#include <map>
+#include <tuple>
+#include <vector>
+
+struct CoeffCache {
+    bool computed = false;
+    double c[4] = {0.0, 0.0, 0.0, 0.0}; // up to cubic
+    double start = 0.0;
+    double finish = 0.0;
+    double pepoch = 0.0;
+    int nobs = 0;
+};
+
+double legendre(double x, int n) {
+    switch (n) {
+        case 0: return 1.0;
+        case 1: return x;
+        case 2: return 0.5 * (3*x*x - 1);
+        case 3: return 0.5 * (5*x*x*x - 3*x);
+        default: assert(0); return 0.0; // Only support up to n=3
+    }
+}
+
+// Compute best-fit Legendre polynomial coefficients for projecting a pure
+// sin or cos basis function (with no frequency-dependent prefactor) onto the
+// fitted polynomial orders.  Fills entry.c[] via least-squares normal
+// equations and marks entry.computed = true.
+static void computePolySubtractCoeffs(
+        pulsar *psr, int ipsr,
+        double freq, bool is_cos,
+        double alpha, double beta, double pepoch,
+        CoeffCache &entry)
+{
+    int N = psr[ipsr].nobs;
+    if (N < 2 || alpha == 0.0) {
+        entry.computed = true;
+        return;
+    }
+
+    int fitOrders[4];
+    int nfit = 0;
+    for (int n = 0; n < 4; n++) {
+        if (psr[ipsr].param[param_f].fitFlag[n] == 1)
+            fitOrders[nfit++] = n;
+    }
+    if (nfit == 0) {
+        entry.computed = true;
+        return;
+    }
+
+    std::vector<double> xi(N), f(N);
+    for (int i = 0; i < N; i++) {
+        double xj = psr[ipsr].obsn[i].bbat - pepoch;
+        xi[i] = (xj - beta) / alpha;
+        f[i]  = is_cos ? cos(2.0 * M_PI * freq * xj)
+                       : sin(2.0 * M_PI * freq * xj);
+    }
+
+    // Normal equations: (A^T A) c = A^T f,  A[i][j] = P_{fitOrders[j]}(xi[i])
+    double ATA[4][4] = {};
+    double ATf[4]    = {};
+    for (int i = 0; i < N; i++) {
+        double P[4];
+        for (int j = 0; j < nfit; j++)
+            P[j] = legendre(xi[i], fitOrders[j]);
+        for (int j = 0; j < nfit; j++) {
+            ATf[j] += P[j] * f[i];
+            for (int l = 0; l < nfit; l++)
+                ATA[j][l] += P[j] * P[l];
+        }
+    }
+
+    // Gauss-Jordan elimination with partial pivoting
+    double aug[4][5] = {};
+    for (int j = 0; j < nfit; j++) {
+        for (int l = 0; l < nfit; l++)
+            aug[j][l] = ATA[j][l];
+        aug[j][nfit] = ATf[j];
+    }
+    for (int col = 0; col < nfit; col++) {
+        int pivot = col;
+        for (int row = col+1; row < nfit; row++)
+            if (fabs(aug[row][col]) > fabs(aug[pivot][col]))
+                pivot = row;
+        for (int l = 0; l <= nfit; l++)
+            std::swap(aug[col][l], aug[pivot][l]);
+        if (fabs(aug[col][col]) < 1e-14) continue; // singular column
+        double inv = 1.0 / aug[col][col];
+        for (int row = 0; row < nfit; row++) {
+            if (row == col) continue;
+            double factor = aug[row][col] * inv;
+            for (int l = col; l <= nfit; l++)
+                aug[row][l] -= factor * aug[col][l];
+        }
+        for (int l = col+1; l <= nfit; l++)
+            aug[col][l] *= inv;
+        aug[col][col] = 1.0;
+    }
+
+    for (int j = 0; j < nfit; j++)
+        entry.c[fitOrders[j]] = aug[j][nfit];
+    entry.computed = true;
+}
 
 double t2FitFunc_nestlike_red(pulsar *psr, int ipsr ,double x ,int ipos ,param_label label,int k) {
+    static std::map<std::tuple<int,int,param_label>, CoeffCache> cache;
     double maxtspan = psr[ipsr].param[param_finish].val[0] - psr[ipsr].param[param_start].val[0];
     double RedFLow = pow(10., psr[ipsr].TNRedFLow);
     double freq; 
+
+
+    bool is_cos;
+    switch (label) {
+        case param_red_cos: is_cos = true;  break;
+        case param_red_sin: is_cos = false; break;
+        default: assert(0); return 0.0;
+    }
+
     if (k >= psr[ipsr].TNRedC){ // This is in the log freq zone!
         int subharm = k - psr[ipsr].TNRedC + 1;
         double freq0 = RedFLow*(1.0/maxtspan);
@@ -18,19 +131,53 @@ double t2FitFunc_nestlike_red(pulsar *psr, int ipsr ,double x ,int ipos ,param_l
     } else {
         freq = RedFLow*((double)(k+1.0))/(maxtspan);
     }
-    double ret=0;
-    switch (label){
-        case param_red_cos:
-            ret = cos(2.0*M_PI*freq*x);
-            break;
-        case param_red_sin:
-            ret = sin(2.0*M_PI*freq*x);
-            break;
-        default:
-            assert(0);
-            break;
+
+    // Compute orthogonalised trig value (no freq-dependent prefactor)
+    double trig = is_cos ? cos(2.0*M_PI*freq*x) : sin(2.0*M_PI*freq*x);
+
+    if (psr[ipsr].TNsubtractPoly == 2){
+        // subtract polynomial from the basis
+        double a = psr[ipsr].param[param_start].val[0];
+        double b = psr[ipsr].param[param_finish].val[0];
+        double alpha = (b - a)/2.0;
+        double beta  = (b + a)/2.0;
+
+        auto key = std::make_tuple(ipsr, k, label);        
+        const double pepoch = psr[ipsr].param[param_pepoch].val[0];
+        const int nobs = psr[ipsr].nobs;
+
+
+        auto &entry = cache[key];
+        if (entry.computed &&
+            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs)) {
+            entry.computed = false;
+            entry.c[0] = 0.0;
+            entry.c[1] = 0.0;
+            entry.c[2] = 0.0;
+            entry.c[3] = 0.0;
+        }
+
+        if (!entry.computed) {
+            logmsg("Computing polynomial subtraction coefficients for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
+            computePolySubtractCoeffs(psr, ipsr, freq, is_cos,
+                                      alpha, beta, pepoch, entry);
+            entry.start  = a;
+            entry.finish = b;
+            entry.pepoch = pepoch;
+            entry.nobs   = nobs;
+        }
+
+        
+
+        if (alpha != 0.0) {
+            double xi_val = (x - beta)/alpha;
+            for (int n = 0; n < 4; n++) {
+                trig -= entry.c[n] * legendre(xi_val, n);
+            }
+        }
     }
-    return ret;
+    
+    return trig;
 }
 
 double t2FitFunc_nestlike_red_dm(pulsar *psr, int ipsr ,double x ,int ipos ,param_label label,int k) {
@@ -43,20 +190,50 @@ double t2FitFunc_nestlike_red_dm(pulsar *psr, int ipsr ,double x ,int ipos ,para
     } else {
         freq = ((double)(k+1.0))/(maxtspan);
     }
-    double kappa = DM_CONST*1e-12;
-    double ret=0;
-    switch (label){
-        case param_red_dm_cos:
-	    ret = cos(2.0*M_PI*freq*x)/(kappa*(pow((double)psr[ipsr].obsn[ipos].freqSSB,2)));
-            break;
-        case param_red_dm_sin:
-            ret = sin(2.0*M_PI*freq*x)/(kappa*(pow((double)psr[ipsr].obsn[ipos].freqSSB,2)));
-            break;
-        default:
-            assert(0);
-            break;
+
+    bool is_cos;
+    switch (label) {
+        case param_red_dm_cos: is_cos = true;  break;
+        case param_red_dm_sin: is_cos = false; break;
+        default: assert(0); return 0.0;
     }
-    return ret;
+
+    // Compute orthogonalised trig value (no freq-dependent prefactor)
+    double trig = is_cos ? cos(2.0*M_PI*freq*x) : sin(2.0*M_PI*freq*x);
+
+    if (psr[ipsr].TNsubtractPoly != 0) {
+        static std::map<std::tuple<int,int,param_label>, CoeffCache> cache;
+        double a      = psr[ipsr].param[param_start].val[0];
+        double b      = psr[ipsr].param[param_finish].val[0];
+        double alpha  = (b - a) / 2.0;
+        double beta   = (b + a) / 2.0;
+        double pepoch = psr[ipsr].param[param_pepoch].val[0];
+        int    nobs   = psr[ipsr].nobs;
+        auto   key    = std::make_tuple(ipsr, k, label);
+        auto  &entry  = cache[key];
+
+        if (entry.computed &&
+            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs)) {
+            entry = CoeffCache{};
+        }
+        if (!entry.computed) {
+            logmsg("Computing polynomial subtraction coefficients (dm) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
+            computePolySubtractCoeffs(psr, ipsr, freq, is_cos, alpha, beta, pepoch, entry);
+            entry.start  = a;
+            entry.finish = b;
+            entry.pepoch = pepoch;
+            entry.nobs   = nobs;
+        }
+
+        if (alpha != 0.0) {
+            double xi_val = (x - beta) / alpha;
+            for (int n = 0; n < 4; n++)
+                trig -= entry.c[n] * legendre(xi_val, n);
+        }
+    }
+
+    double kappa = DM_CONST*1e-12;
+    return trig / (kappa * pow((double)psr[ipsr].obsn[ipos].freqSSB, 2));
 }
 
 double t2FitFunc_nestlike_red_chrom(pulsar *psr, int ipsr ,double x ,int ipos ,param_label label,int k) {
@@ -69,28 +246,51 @@ double t2FitFunc_nestlike_red_chrom(pulsar *psr, int ipsr ,double x ,int ipos ,p
     } else {
         freq = ((double)(k+1.0))/(maxtspan);
     }
-    double ret=0;
-   
-    double index=psr[ipsr].TNChromIdx;
-    
-    //double kappa = DM_CONST*powf(1e-6,index);
 
-    //fprintf(stderr, "%.8le\n", psr[ipsr].obsn[ipos].freqSSB);
-
-    double prefac=1.;
-
-    switch (label){
-        case param_red_chrom_cos:
-	    ret = prefac*cos(2.0*M_PI*freq*x)/((pow((double)psr[ipsr].obsn[ipos].freqSSB/1.4e9,index)));
-            break;
-        case param_red_chrom_sin:
-            ret = prefac*sin(2.0*M_PI*freq*x)/((pow((double)psr[ipsr].obsn[ipos].freqSSB/1.4e9,index)));
-            break;
-        default:
-            assert(0);
-            break;
+    bool is_cos;
+    switch (label) {
+        case param_red_chrom_cos: is_cos = true;  break;
+        case param_red_chrom_sin: is_cos = false; break;
+        default: assert(0); return 0.0;
     }
-    return ret;
+
+    // Compute orthogonalised trig value (no freq-dependent prefactor)
+    double trig = is_cos ? cos(2.0*M_PI*freq*x) : sin(2.0*M_PI*freq*x);
+
+    if (psr[ipsr].TNsubtractPoly != 0) {
+        static std::map<std::tuple<int,int,param_label>, CoeffCache> cache;
+        double a      = psr[ipsr].param[param_start].val[0];
+        double b      = psr[ipsr].param[param_finish].val[0];
+        double alpha  = (b - a) / 2.0;
+        double beta   = (b + a) / 2.0;
+        double pepoch = psr[ipsr].param[param_pepoch].val[0];
+        int    nobs   = psr[ipsr].nobs;
+        auto   key    = std::make_tuple(ipsr, k, label);
+        auto  &entry  = cache[key];
+
+        if (entry.computed &&
+            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs)) {
+            entry = CoeffCache{};
+        }
+        if (!entry.computed) {
+            logmsg("Computing polynomial subtraction coefficients (chrom) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
+            computePolySubtractCoeffs(psr, ipsr, freq, is_cos, alpha, beta, pepoch, entry);
+            entry.start  = a;
+            entry.finish = b;
+            entry.pepoch = pepoch;
+            entry.nobs   = nobs;
+        }
+
+        if (alpha != 0.0) {
+            double xi_val = (x - beta) / alpha;
+            for (int n = 0; n < 4; n++)
+                trig -= entry.c[n] * legendre(xi_val, n);
+        }
+    }
+
+    double index  = psr[ipsr].TNChromIdx;
+    double prefac = 1.0;
+    return prefac * trig / pow((double)psr[ipsr].obsn[ipos].freqSSB / 1.4e9, index);
 }
 
 
