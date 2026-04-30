@@ -3909,7 +3909,7 @@ void drawMenu3(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,
         drawAxisSel(0,0.10,"DM Var",xplot==17,yplot==17);
     }
     if(psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx !=0 ){
-        drawAxisSel(0,0.06,"Chrom. Noise",xplot==19,yplot==19);
+        drawAxisSel(0,0.04,"Chrom. Noise",xplot==19,yplot==19);
     }
     
 

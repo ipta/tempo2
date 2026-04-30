@@ -34,7 +34,7 @@ double legendre(double x, int n) {
 // fitted polynomial orders.  Fills entry.c[] via least-squares normal
 // equations and marks entry.computed = true.
 static void computePolySubtractCoeffs(
-        pulsar *psr, int ipsr,
+        pulsar *psr, int ipsr, param_label poly_param,
         double freq, bool is_cos,
         double alpha, double beta, double pepoch,
         CoeffCache &entry)
@@ -47,10 +47,19 @@ static void computePolySubtractCoeffs(
 
     int fitOrders[4];
     int nfit = 0;
-    for (int n = 0; n < 4; n++) {
-        if (psr[ipsr].param[param_f].fitFlag[n] == 1)
-            fitOrders[nfit++] = n;
-    }
+    if (poly_param==param_f) {
+        fitOrders[nfit++] = 0; // Always fit the constant term for red noise subtraction
+        for (int n = 1; n < 4; n++) {
+            if (psr[ipsr].param[param_f].fitFlag[n-1] == 1)
+                fitOrders[nfit++] = n;
+        }
+    } else {
+        for (int n = 0; n < 4; n++) {
+            if (psr[ipsr].param[poly_param].fitFlag[n] == 1)
+                fitOrders[nfit++] = n;
+        }
+    } 
+
     if (nfit == 0) {
         entry.computed = true;
         return;
@@ -135,7 +144,7 @@ double t2FitFunc_nestlike_red(pulsar *psr, int ipsr ,double x ,int ipos ,param_l
     // Compute orthogonalised trig value (no freq-dependent prefactor)
     double trig = is_cos ? cos(2.0*M_PI*freq*x) : sin(2.0*M_PI*freq*x);
 
-    if (psr[ipsr].TNsubtractPoly == 2){
+    if (psr[ipsr].TNsubtractPoly&2){
         // subtract polynomial from the basis
         double a = psr[ipsr].param[param_start].val[0];
         double b = psr[ipsr].param[param_finish].val[0];
@@ -159,7 +168,7 @@ double t2FitFunc_nestlike_red(pulsar *psr, int ipsr ,double x ,int ipos ,param_l
 
         if (!entry.computed) {
             logmsg("Computing polynomial subtraction coefficients for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
-            computePolySubtractCoeffs(psr, ipsr, freq, is_cos,
+            computePolySubtractCoeffs(psr, ipsr, param_f, freq, is_cos,
                                       alpha, beta, pepoch, entry);
             entry.start  = a;
             entry.finish = b;
@@ -201,7 +210,7 @@ double t2FitFunc_nestlike_red_dm(pulsar *psr, int ipsr ,double x ,int ipos ,para
     // Compute orthogonalised trig value (no freq-dependent prefactor)
     double trig = is_cos ? cos(2.0*M_PI*freq*x) : sin(2.0*M_PI*freq*x);
 
-    if (psr[ipsr].TNsubtractPoly != 0) {
+    if (psr[ipsr].TNsubtractPoly&2) {
         static std::map<std::tuple<int,int,param_label>, CoeffCache> cache;
         double a      = psr[ipsr].param[param_start].val[0];
         double b      = psr[ipsr].param[param_finish].val[0];
@@ -218,7 +227,7 @@ double t2FitFunc_nestlike_red_dm(pulsar *psr, int ipsr ,double x ,int ipos ,para
         }
         if (!entry.computed) {
             logmsg("Computing polynomial subtraction coefficients (dm) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
-            computePolySubtractCoeffs(psr, ipsr, freq, is_cos, alpha, beta, pepoch, entry);
+            computePolySubtractCoeffs(psr, ipsr, param_dm, freq, is_cos, alpha, beta, pepoch, entry);
             entry.start  = a;
             entry.finish = b;
             entry.pepoch = pepoch;
@@ -257,7 +266,7 @@ double t2FitFunc_nestlike_red_chrom(pulsar *psr, int ipsr ,double x ,int ipos ,p
     // Compute orthogonalised trig value (no freq-dependent prefactor)
     double trig = is_cos ? cos(2.0*M_PI*freq*x) : sin(2.0*M_PI*freq*x);
 
-    if (psr[ipsr].TNsubtractPoly != 0) {
+    if (psr[ipsr].TNsubtractPoly&2) {
         static std::map<std::tuple<int,int,param_label>, CoeffCache> cache;
         double a      = psr[ipsr].param[param_start].val[0];
         double b      = psr[ipsr].param[param_finish].val[0];
@@ -274,7 +283,7 @@ double t2FitFunc_nestlike_red_chrom(pulsar *psr, int ipsr ,double x ,int ipos ,p
         }
         if (!entry.computed) {
             logmsg("Computing polynomial subtraction coefficients (chrom) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
-            computePolySubtractCoeffs(psr, ipsr, freq, is_cos, alpha, beta, pepoch, entry);
+            computePolySubtractCoeffs(psr, ipsr, param_cm, freq, is_cos, alpha, beta, pepoch, entry);
             entry.start  = a;
             entry.finish = b;
             entry.pepoch = pepoch;

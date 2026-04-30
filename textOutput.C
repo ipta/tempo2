@@ -1566,9 +1566,11 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                     fprintf(fout2,"TNsubtractRed 1\n");
 
                 }
-                if (psr[p].TNsubtractPoly != 0){
+                
+                if ( (psr[p].TNRedAmp != 0 && psr[p].TNRedGam != 0) ||
+                    (psr[p].TNDMAmp != 0 && psr[p].TNDMGam != 0) ||
+                    (psr[p].TNChromAmp != 0 && psr[p].TNChromGam != 0) ){
                     fprintf(fout2,"TNsubtractPoly %d\n", psr[p].TNsubtractPoly);
-
                 }
 
 

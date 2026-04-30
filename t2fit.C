@@ -596,7 +596,7 @@ void subtractTNPoly(pulsar *psr, int ipsr, label param)
 {
     int _writeResiduals=writeResiduals; // store and disable writeResiduals so that we don't clobber the output
     writeResiduals=0;
-    if (psr[ipsr].TNsubtractPoly)
+    if (psr[ipsr].TNsubtractPoly&1)
     {
         double *psr_x = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
         double *psr_y = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
