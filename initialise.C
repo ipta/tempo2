@@ -35,6 +35,7 @@
 #include <string.h>
 #include "tempo2.h"
 #include "TKmatrix.h"
+#include "t2fit_nestlike.h"
 
 void initialise(pulsar *psr,int noWarnings)
 {
@@ -222,7 +223,7 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
     psr->TNsubtractDM=0;
     psr->TNsubtractRed=0;
     psr->TNsubtractChrom=0;
-    psr->TNsubtractPoly=1;
+    psr->TNsubtractPoly=t2EncodeTNsubtractPoly(1,2,2,2); // Default to postfit quadratic subtraction for red, DM, and chromatic noise
     psr->TN_QpRatio=0;
     psr->TN_QpPeriod=0;
     psr->TN_QpSig=0;

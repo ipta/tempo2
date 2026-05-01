@@ -35,6 +35,7 @@
 #include "constraints.h"
 #include "TKfit.h"
 #include "t2fit.h"
+#include "t2fit_nestlike.h"
 #include "enum_str.h"
 
 //#define TSUN (4.925490947e-6L) (Should be tempo2.h now).
@@ -447,6 +448,31 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
             }
             printf("------------------------------------------------------------------------------\n");
 
+        }
+
+        {
+            int basisPolySubtracted = ((psr[p].TNsubtractPoly & T2_TNSUBPOLY_FLAG_NESTLIKE) != 0);
+            int anyNoise = (psr[p].TNRedAmp != 0) || (psr[p].TNDMAmp != 0) || (psr[p].TNChromAmp != 0);
+            if (anyNoise) {
+                printf("\nFourier GP Noise Model:\n");
+                if (psr[p].TNRedAmp != 0){
+                        printf("  TNRed   : log10A=%g gamma=%g nFreq=%d nLogFreq=%d polySub=%s (ord=%d)\n",
+                                psr[p].TNRedAmp, psr[p].TNRedGam, psr[p].TNRedC, psr[p].TNRed_log_freqs,
+                                basisPolySubtracted ? "Y" : "N", t2DecodeTNRedSubPolyOrd(psr[p].TNsubtractPoly));
+                        if (psr[p].TNRedFLow != 0){
+                            // print the factor by which Tspan has been adusted
+                            printf("            Tspan scale factor = %lg\n",pow(10., -psr[p].TNRedFLow));
+                        }
+                    }
+                if (psr[p].TNDMAmp != 0)
+                    printf("  TNDM    : log10A=%g gamma=%g nFreq=%d nLogFreq=%d polySub=%s (ord=%d)\n",
+                            psr[p].TNDMAmp, psr[p].TNDMGam, psr[p].TNDMC, psr[p].TNDM_log_freqs,
+                            basisPolySubtracted ? "Y" : "N", t2DecodeTNDMSubPolyOrd(psr[p].TNsubtractPoly));
+                if (psr[p].TNChromAmp != 0)
+                    printf("  TNChrom : log10A=%g gamma=%g nFreq=%d nLogFreq=%d polySub=%s (ord=%d)\n",
+                            psr[p].TNChromAmp, psr[p].TNChromGam, psr[p].TNChromC, psr[p].TNChrom_log_freqs,
+                            basisPolySubtracted ? "Y" : "N", t2DecodeTNChromSubPolyOrd(psr[p].TNsubtractPoly));
+            }
         }
 
         if (psr[p].param[param_gwsingle].paramSet[0]==1)
@@ -1570,7 +1596,17 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                 if ( (psr[p].TNRedAmp != 0 && psr[p].TNRedGam != 0) ||
                     (psr[p].TNDMAmp != 0 && psr[p].TNDMGam != 0) ||
                     (psr[p].TNChromAmp != 0 && psr[p].TNChromGam != 0) ){
-                    fprintf(fout2,"TNsubtractPoly %d\n", psr[p].TNsubtractPoly);
+                    uint64_t tnsubFlags = t2DecodeTNsubtractPolyFlags(psr[p].TNsubtractPoly);
+                    int redOrdStored = t2DecodeTNRedSubPolyOrd(psr[p].TNsubtractPoly);
+                    int dmOrdStored = t2DecodeTNDMSubPolyOrd(psr[p].TNsubtractPoly);
+                    int chromOrdStored = t2DecodeTNChromSubPolyOrd(psr[p].TNsubtractPoly);
+                    fprintf(fout2,"TNsubtractPoly %llu\n", (unsigned long long)tnsubFlags);
+                    if ((tnsubFlags & T2_TNSUBPOLY_FLAG_NESTLIKE))
+                        fprintf(fout2,"TNRedSubPolyOrd %d\n", redOrdStored);
+                    if ((tnsubFlags & T2_TNSUBPOLY_FLAG_NESTLIKE))
+                        fprintf(fout2,"TNDMSubPolyOrd %d\n",dmOrdStored);
+                    if ((tnsubFlags & T2_TNSUBPOLY_FLAG_NESTLIKE))
+                        fprintf(fout2,"TNChromSubPolyOrd %d\n",chromOrdStored);
                 }
 
 

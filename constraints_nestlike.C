@@ -59,7 +59,7 @@ double constraints_nestlike_red(pulsar *psr,int ipsr, int iconstraint,int iparam
             freq = freq0 * pow(psr[ipsr].TNRed_log_factor,-subharm);
             // to be consistent with enterprise, we want difference to the previous frequency.
             if (subharm == psr[ipsr].TNRed_log_freqs){
-                df = freq; // difference from zero
+                df = freq/86400.0; // difference from zero
             } else {
                 df = (freq - freq0 * pow(psr[ipsr].TNRed_log_factor,-subharm-1))/86400.0; // in per second
             }
@@ -131,7 +131,7 @@ double constraints_nestlike_red_dm(pulsar *psr,int ipsr, int iconstraint,int ipa
             freq = freq0 * pow(psr[ipsr].TNDM_log_factor,-subharm);
             // to be consistent with enterprise, we want difference to the previous frequency.
             if (subharm == psr[ipsr].TNDM_log_freqs){
-                df = freq; // difference from zero
+                df = freq/86400.0; // difference from zero
             } else {
                 df = (freq - freq0 * pow(psr[ipsr].TNDM_log_factor,-subharm-1))/86400.0; // in per second
             }
@@ -177,7 +177,7 @@ double constraints_nestlike_red_chrom(pulsar *psr,int ipsr, int iconstraint,int 
             int subharm = k - psr[ipsr].TNChromC + 1;
             freq = freq0 * pow(psr[ipsr].TNChrom_log_factor,-subharm);
             if (subharm == psr[ipsr].TNChrom_log_freqs){
-                df = freq; // difference from zero
+                df = freq/86400.0; // difference from zero in second
             } else {
                 df = (freq - freq0 * pow(psr[ipsr].TNChrom_log_factor,-subharm-1))/86400.0; // in per second
             }       

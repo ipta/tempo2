@@ -17,6 +17,7 @@ struct CoeffCache {
     double finish = 0.0;
     double pepoch = 0.0;
     int nobs = 0;
+    int order = -1;
 };
 
 double legendre(double x, int n) {
@@ -34,9 +35,10 @@ double legendre(double x, int n) {
 // fitted polynomial orders.  Fills entry.c[] via least-squares normal
 // equations and marks entry.computed = true.
 static void computePolySubtractCoeffs(
-        pulsar *psr, int ipsr, param_label poly_param,
+        pulsar *psr, int ipsr,
         double freq, bool is_cos,
         double alpha, double beta, double pepoch,
+        int max_order,
         CoeffCache &entry)
 {
     int N = psr[ipsr].nobs;
@@ -47,18 +49,9 @@ static void computePolySubtractCoeffs(
 
     int fitOrders[4];
     int nfit = 0;
-    if (poly_param==param_f) {
-        fitOrders[nfit++] = 0; // Always fit the constant term for red noise subtraction
-        for (int n = 1; n < 4; n++) {
-            if (psr[ipsr].param[param_f].fitFlag[n-1] == 1)
-                fitOrders[nfit++] = n;
-        }
-    } else {
-        for (int n = 0; n < 4; n++) {
-            if (psr[ipsr].param[poly_param].fitFlag[n] == 1)
-                fitOrders[nfit++] = n;
-        }
-    } 
+    max_order = t2ClampSubPolyOrder(max_order);
+    for (int n = 0; n <= max_order; n++)
+        fitOrders[nfit++] = n;
 
     if (nfit == 0) {
         entry.computed = true;
@@ -150,6 +143,8 @@ double t2FitFunc_nestlike_red(pulsar *psr, int ipsr ,double x ,int ipos ,param_l
         double b = psr[ipsr].param[param_finish].val[0];
         double alpha = (b - a)/2.0;
         double beta  = (b + a)/2.0;
+        const int order = t2DecodeTNRedSubPolyOrd(psr[ipsr].TNsubtractPoly);
+        
 
         auto key = std::make_tuple(ipsr, k, label);        
         const double pepoch = psr[ipsr].param[param_pepoch].val[0];
@@ -158,7 +153,7 @@ double t2FitFunc_nestlike_red(pulsar *psr, int ipsr ,double x ,int ipos ,param_l
 
         auto &entry = cache[key];
         if (entry.computed &&
-            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs)) {
+            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs || entry.order != order)) {
             entry.computed = false;
             entry.c[0] = 0.0;
             entry.c[1] = 0.0;
@@ -167,13 +162,14 @@ double t2FitFunc_nestlike_red(pulsar *psr, int ipsr ,double x ,int ipos ,param_l
         }
 
         if (!entry.computed) {
-            logmsg("Computing polynomial subtraction coefficients for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
-            computePolySubtractCoeffs(psr, ipsr, param_f, freq, is_cos,
-                                      alpha, beta, pepoch, entry);
+            logdbg("Computing polynomial subtraction coefficients (red) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
+            computePolySubtractCoeffs(psr, ipsr, freq, is_cos,
+                                      alpha, beta, pepoch, order, entry);
             entry.start  = a;
             entry.finish = b;
             entry.pepoch = pepoch;
             entry.nobs   = nobs;
+            entry.order  = order;
         }
 
         
@@ -216,22 +212,24 @@ double t2FitFunc_nestlike_red_dm(pulsar *psr, int ipsr ,double x ,int ipos ,para
         double b      = psr[ipsr].param[param_finish].val[0];
         double alpha  = (b - a) / 2.0;
         double beta   = (b + a) / 2.0;
+        int    order  = t2DecodeTNDMSubPolyOrd(psr[ipsr].TNsubtractPoly);
         double pepoch = psr[ipsr].param[param_pepoch].val[0];
         int    nobs   = psr[ipsr].nobs;
         auto   key    = std::make_tuple(ipsr, k, label);
         auto  &entry  = cache[key];
 
         if (entry.computed &&
-            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs)) {
+            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs || entry.order != order)) {
             entry = CoeffCache{};
         }
         if (!entry.computed) {
-            logmsg("Computing polynomial subtraction coefficients (dm) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
-            computePolySubtractCoeffs(psr, ipsr, param_dm, freq, is_cos, alpha, beta, pepoch, entry);
+            logdbg("Computing polynomial subtraction coefficients (dm) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
+            computePolySubtractCoeffs(psr, ipsr, freq, is_cos, alpha, beta, pepoch, order, entry);
             entry.start  = a;
             entry.finish = b;
             entry.pepoch = pepoch;
             entry.nobs   = nobs;
+            entry.order  = order;
         }
 
         if (alpha != 0.0) {
@@ -272,22 +270,24 @@ double t2FitFunc_nestlike_red_chrom(pulsar *psr, int ipsr ,double x ,int ipos ,p
         double b      = psr[ipsr].param[param_finish].val[0];
         double alpha  = (b - a) / 2.0;
         double beta   = (b + a) / 2.0;
+        int    order  = t2DecodeTNChromSubPolyOrd(psr[ipsr].TNsubtractPoly);
         double pepoch = psr[ipsr].param[param_pepoch].val[0];
         int    nobs   = psr[ipsr].nobs;
         auto   key    = std::make_tuple(ipsr, k, label);
         auto  &entry  = cache[key];
 
         if (entry.computed &&
-            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs)) {
+            (entry.start != a || entry.finish != b || entry.pepoch != pepoch || entry.nobs != nobs || entry.order != order)) {
             entry = CoeffCache{};
         }
         if (!entry.computed) {
-            logmsg("Computing polynomial subtraction coefficients (chrom) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
-            computePolySubtractCoeffs(psr, ipsr, param_cm, freq, is_cos, alpha, beta, pepoch, entry);
+            logdbg("Computing polynomial subtraction coefficients (chrom) for pulsar %d, k=%d, label=%s", ipsr, k, label_str[label]);
+            computePolySubtractCoeffs(psr, ipsr, freq, is_cos, alpha, beta, pepoch, order, entry);
             entry.start  = a;
             entry.finish = b;
             entry.pepoch = pepoch;
             entry.nobs   = nobs;
+            entry.order  = order;
         }
 
         if (alpha != 0.0) {
