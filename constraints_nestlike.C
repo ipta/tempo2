@@ -177,7 +177,7 @@ double constraints_nestlike_red_chrom(pulsar *psr,int ipsr, int iconstraint,int 
             int subharm = k - psr[ipsr].TNChromC + 1;
             freq = freq0 * pow(psr[ipsr].TNChrom_log_factor,-subharm);
             if (subharm == psr[ipsr].TNChrom_log_freqs){
-                df = freq/86400.0; // difference from zero in second
+                df = freq/86400.0; // difference from zero in seconds
             } else {
                 df = (freq - freq0 * pow(psr[ipsr].TNChrom_log_factor,-subharm-1))/86400.0; // in per second
             }       

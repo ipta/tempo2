@@ -2001,8 +2001,13 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
                 } else if (plk_mode == 1 && key == 'j') { 
                     // set custom jump turns for pulse number adjustment mode
+                    double requested_jump_turns = jump_turns;
                     printf("Enter number of turns to jump for J key (e.g. 3 for 1/3 of a turn): ");
-                    scanf("%lf",&jump_turns);
+                    if (scanf("%lf",&requested_jump_turns) == 1 && requested_jump_turns > 0.0) {
+                        jump_turns = requested_jump_turns;
+                    } else {
+                        printf("Invalid value, keeping previous jump setting (%lg turns).\n", jump_turns);
+                    }
                     getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
                     printf("In J mode, will add %lg turns\n",1.0/jump_turns);
                 } else if (plk_mode == 1 && (key=='H' || key=='J')) {

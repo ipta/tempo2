@@ -139,15 +139,15 @@ double t2FitFunc_nestlike_red(pulsar *psr, int ipsr ,double x ,int ipos ,param_l
 
     if (psr[ipsr].TNsubtractPoly&2){
         // subtract polynomial from the basis
-        double a = psr[ipsr].param[param_start].val[0];
-        double b = psr[ipsr].param[param_finish].val[0];
+        const double pepoch = psr[ipsr].param[param_pepoch].val[0];
+        double a = psr[ipsr].param[param_start].val[0] - pepoch;
+        double b = psr[ipsr].param[param_finish].val[0] - pepoch;
         double alpha = (b - a)/2.0;
         double beta  = (b + a)/2.0;
         const int order = t2DecodeTNRedSubPolyOrd(psr[ipsr].TNsubtractPoly);
         
 
         auto key = std::make_tuple(ipsr, k, label);        
-        const double pepoch = psr[ipsr].param[param_pepoch].val[0];
         const int nobs = psr[ipsr].nobs;
 
 
@@ -208,12 +208,12 @@ double t2FitFunc_nestlike_red_dm(pulsar *psr, int ipsr ,double x ,int ipos ,para
 
     if (psr[ipsr].TNsubtractPoly&2) {
         static std::map<std::tuple<int,int,param_label>, CoeffCache> cache;
-        double a      = psr[ipsr].param[param_start].val[0];
-        double b      = psr[ipsr].param[param_finish].val[0];
+        double pepoch = psr[ipsr].param[param_pepoch].val[0];
+        double a      = psr[ipsr].param[param_start].val[0] - pepoch;
+        double b      = psr[ipsr].param[param_finish].val[0] - pepoch;
         double alpha  = (b - a) / 2.0;
         double beta   = (b + a) / 2.0;
         int    order  = t2DecodeTNDMSubPolyOrd(psr[ipsr].TNsubtractPoly);
-        double pepoch = psr[ipsr].param[param_pepoch].val[0];
         int    nobs   = psr[ipsr].nobs;
         auto   key    = std::make_tuple(ipsr, k, label);
         auto  &entry  = cache[key];
@@ -266,12 +266,12 @@ double t2FitFunc_nestlike_red_chrom(pulsar *psr, int ipsr ,double x ,int ipos ,p
 
     if (psr[ipsr].TNsubtractPoly&2) {
         static std::map<std::tuple<int,int,param_label>, CoeffCache> cache;
-        double a      = psr[ipsr].param[param_start].val[0];
-        double b      = psr[ipsr].param[param_finish].val[0];
+        double pepoch = psr[ipsr].param[param_pepoch].val[0];
+        double a      = psr[ipsr].param[param_start].val[0] - pepoch;
+        double b      = psr[ipsr].param[param_finish].val[0] - pepoch;
         double alpha  = (b - a) / 2.0;
         double beta   = (b + a) / 2.0;
         int    order  = t2DecodeTNChromSubPolyOrd(psr[ipsr].TNsubtractPoly);
-        double pepoch = psr[ipsr].param[param_pepoch].val[0];
         int    nobs   = psr[ipsr].nobs;
         auto   key    = std::make_tuple(ipsr, k, label);
         auto  &entry  = cache[key];
