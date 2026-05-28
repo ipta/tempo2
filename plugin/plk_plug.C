@@ -687,6 +687,8 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
     char flagStrX[1024]="NULL";
     char flagStrY[1024]="NULL";
 
+    double jump_turns = 3.0;
+
     for (i=0;i<100;i++)
         flagCol[i]= 1;
 
@@ -1909,7 +1911,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     printf("Running: %s\n",str);
                     system(str);
                 }
-                else if (key=='j') /* Draw line between points */
+                else if (plk_mode != 1 && key=='j') /* Draw line between points */
                     join*=-1;
                 else if (plk_mode != 1 && key=='J') /* Toggle plotting points */
                     plotPoints*=-1;
@@ -1997,10 +1999,16 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     printf("FlagID = ");  scanf("%s",highlightID[highlightNum]);
                     printf("FlagVal = "); scanf("%s",highlightVal[highlightNum++]);
                     getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
+                } else if (plk_mode == 1 && key == 'j') { 
+                    // set custom jump turns for pulse number adjustment mode
+                    printf("Enter number of turns to jump for J key (e.g. 3 for 1/3 of a turn): ");
+                    scanf("%lf",&jump_turns);
+                    getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
+                    printf("In J mode, will add %lg turns\n",1.0/jump_turns);
                 } else if (plk_mode == 1 && (key=='H' || key=='J')) {
                     // In pulse number adjustment mode, we use H to add half a turn to selected points.
                     double phaseadd = 0.5;
-                    if (key=='J') phaseadd = 1/3.0; // Add a third of a turn instead of half a turn if in J mode.
+                    if (key=='J') phaseadd = 1.0/jump_turns; // Add a custom fraction of a turn instead of half a turn if in J mode.
                     printf("key = %c adding phase %lg via -padd flag\n", key, phaseadd);
 
                     cpgband(2,0,mouseX,mouseY,&mouseX2,&mouseY2,&key);
