@@ -2054,15 +2054,21 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     }
                     formResiduals(psr,npsr,1);
                 }
-                else if (plk_mode == 1 && (key=='-' || key=='+' || key=='_' || key=='=')) {
+                else if (plk_mode == 1 && (key=='-' || key=='+' || key=='_' || key=='=' || key == '0')) {
                     // This is pulse number adjusting mode
                     int i= idPoint(psr,x,y,id,count,mouseX,mouseY); /* Identify closest point */
                     int dpn=-1;
                     if (key == '-' || key== '_' ){
                         dpn=1;
                     }
+                    if (key == '0') {
+                        double phase_turns = psr[0].obsn[i].residual*psr[0].param[param_f].val[0];
+                        int nearest_turns = (phase_turns >= 0.0) ? (int)floor(phase_turns + 0.5)
+                                                               : (int)ceil(phase_turns - 0.5);
+                        dpn = nearest_turns;
+                    }
 
-                    if (key == '-' || key == '=' ) { // just this ToA
+                    if (key == '-' || key == '=' || key == '0') { // just this ToA
                         psr[0].obsn[i].pulseN += dpn;
                         update_pulse_number_flag(psr,i);
                     } else {
