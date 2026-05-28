@@ -34,6 +34,7 @@
 #include <ctype.h>
 #include "tempo2.h"
 #include "tempo2Util.h"
+#include "t2fit_nestlike.h"
 
 int readValue(pulsar *psr,char *pmtr,FILE *fin,parameter *parameter,int arr);
 void getValue(char *str,int v1,int v2,pulsar *psr,int l,int arr);
@@ -1773,7 +1774,34 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
     else if(strcasecmp(str,"TNsubtractDM")==0)
         fscanf(fin,"%d",&(psr->TNsubtractDM));
     else if(strcasecmp(str, "TNsubtractPoly")==0)
-        fscanf(fin,"%d",&(psr->TNsubtractPoly));
+    {
+        char packedVal[128];
+        fscanf(fin, "%127s", packedVal);
+        uint64_t flags = strtoull(packedVal, NULL, 0) & 0xFFULL;
+        psr->TNsubtractPoly = t2EncodeTNsubtractPoly(
+                flags,
+                t2DecodeTNRedSubPolyOrd(psr->TNsubtractPoly),
+                t2DecodeTNDMSubPolyOrd(psr->TNsubtractPoly),
+                t2DecodeTNChromSubPolyOrd(psr->TNsubtractPoly));
+    }
+    else if(strcasecmp(str, "TNRedSubPolyOrd")==0)
+    {
+        int ord;
+        fscanf(fin, "%d", &ord);
+        psr->TNsubtractPoly = t2SetTNRedSubPolyOrd(psr->TNsubtractPoly, ord);
+    }
+    else if(strcasecmp(str, "TNDMSubPolyOrd")==0)
+    {
+        int ord;
+        fscanf(fin, "%d", &ord);
+        psr->TNsubtractPoly = t2SetTNDMSubPolyOrd(psr->TNsubtractPoly, ord);
+    }
+    else if(strcasecmp(str, "TNChromSubPolyOrd")==0)
+    {
+        int ord;
+        fscanf(fin, "%d", &ord);
+        psr->TNsubtractPoly = t2SetTNChromSubPolyOrd(psr->TNsubtractPoly, ord);
+    }
     else if (strcasecmp(str,"TN_QpPeriod")==0) /* Quasi-periodic Timing Noise*/
         fscanf(fin,"%lf",&(psr->TN_QpPeriod));
     else if (strcasecmp(str,"TN_QpLam")==0) /* Quasi-periodic Timing Noise*/

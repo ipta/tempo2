@@ -44,6 +44,7 @@
 // std includes
 #include <stdio.h>
 #include <time.h>
+#include <inttypes.h>
 // TK includes
 #include "TKlongdouble.h"
 #include "TKlog.h"
@@ -915,11 +916,9 @@ typedef struct pulsar {
 
     int TNDM_log_freqs;
     double TNDM_log_factor;
-        int TNChrom_log_freqs;
+    int TNChrom_log_freqs;
     double TNChrom_log_factor;
-    char TNsubtractPoly;
-
-    
+    uint64_t TNsubtractPoly;
 
 } pulsar;
 
