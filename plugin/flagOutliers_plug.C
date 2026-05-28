@@ -376,7 +376,7 @@ int tempoOutput(int argc, char *argv[], pulsar *psr, int npsr)
 	long prefitDeleteCap = 0;
 	size_t maxObs = 0;
 	unsigned char *outlierMask = NULL;
-	unsigned char *origDeleted = NULL;
+	int *origDeleted = NULL;
 	double *absCenteredZ = NULL;
 	double effectivePrefitThreshold = 0.0;
 	int p;
@@ -390,7 +390,7 @@ int tempoOutput(int argc, char *argv[], pulsar *psr, int npsr)
 
 	if (maxObs > 0) {
 		outlierMask = (unsigned char *)calloc(maxObs, sizeof(unsigned char));
-		origDeleted = (unsigned char *)calloc(maxObs, sizeof(unsigned char));
+		origDeleted = (int *)calloc(maxObs, sizeof(int));
 		absCenteredZ = (double *)malloc(maxObs * sizeof(double));
 		if (outlierMask == NULL || origDeleted == NULL || absCenteredZ == NULL) {
 			printf("ERROR: unable to allocate memory for outlier workflow\n");
@@ -454,7 +454,7 @@ int tempoOutput(int argc, char *argv[], pulsar *psr, int npsr)
 		for (p = 0; p < npsr; p++) {
 			int i;
 			for (i = 0; i < psr[p].nobs; i++) {
-				origDeleted[idx] = (unsigned char)(psr[p].obsn[i].deleted != 0);
+				origDeleted[idx] = psr[p].obsn[i].deleted;
 				if (!origDeleted[idx] && outlierMask[idx]) {
 					psr[p].obsn[i].deleted = 1;
 					tempDeleted++;
@@ -478,7 +478,7 @@ int tempoOutput(int argc, char *argv[], pulsar *psr, int npsr)
 			for (p = 0; p < npsr; p++) {
 				int i;
 				for (i = 0; i < psr[p].nobs; i++) {
-					psr[p].obsn[i].deleted = origDeleted[ridx] ? 1 : 0;
+					psr[p].obsn[i].deleted = origDeleted[ridx];
 					ridx++;
 				}
 			}
@@ -538,8 +538,6 @@ int tempoOutput(int argc, char *argv[], pulsar *psr, int npsr)
 	free(origDeleted);
 	free(absCenteredZ);
 
-	writeTim(cfg.outputTim, psr, "tempo2");
-
 	printf("flagOutliers summary:\n");
 	printf("  total observations: %ld\n", finalStats.totalObs);
 	printf("  active observations: %ld\n", finalStats.activeObs);
@@ -559,7 +557,19 @@ int tempoOutput(int argc, char *argv[], pulsar *psr, int npsr)
 	printf("  outliers found: %ld\n", outliers);
 	printf("  new flags added: %ld\n", addedFlags);
 	printf("  already flagged: %ld\n", existingFlags);
-	printf("  output tim file: %s\n", cfg.outputTim);
+
+	if (npsr == 1) {
+		writeTim(cfg.outputTim, &psr[0], "tempo2");
+		printf("  output tim file: %s\n", cfg.outputTim);
+	} else {
+		int pw;
+		for (pw = 0; pw < npsr; pw++) {
+			char outName[MAX_FILELEN + 34]; /* MAX_FILELEN + '_' + 32-char name + '\0' */
+			snprintf(outName, sizeof(outName), "%s_%s", cfg.outputTim, psr[pw].name);
+			writeTim(outName, &psr[pw], "tempo2");
+			printf("  output tim file (pulsar %s): %s\n", psr[pw].name, outName);
+		}
+	}
 
 	return 0;
 }
