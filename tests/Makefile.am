@@ -1,5 +1,6 @@
 AM_DEFAULT_SOURCE_EXT=.C
 
+
 test_programs=testTKfit testTempo2 testEndToEnd
 LOG_DRIVER=$(srcdir)/custom-test-driver
 
@@ -16,6 +17,11 @@ EXTRA_DIST=test_data custom-test-driver $(gtest_src) $(gtest_hdr)
 AM_CPPFLAGS = -DTEST_DELTA=1e-9l -DDATDIR=\"$(srcdir)/test_data\" @PTHREAD_CFLAGS@
 
 CPPFLAGS=-I$(srcdir)/gtest-1.7.0/include -I$(srcdir)/gtest-1.7.0 -I$(top_srcdir)
+
+# On macOS SDK 26+, force clang for test compilation (detected at configure time).
+CC=@TEST_CC@
+CXX=@TEST_CXX@
+
 
 
 
