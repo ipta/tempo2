@@ -147,14 +147,7 @@ TEMPO2_OPENMP_CXXFLAGS=""
 TEMPO2_OPENMP_LIBS=""
 if test X$have_openmp == Xyes; then
     TEMPO2_OPENMP_CXXFLAGS="$OPENMP_CXXFLAGS -DHAVE_OPENMP"
-    case "$CXX" in
-        *clang*)
-            TEMPO2_OPENMP_LIBS="-lomp"
-            ;;
-        *)
-            TEMPO2_OPENMP_LIBS="-lgomp"
-            ;;
-    esac
+    TEMPO2_OPENMP_LIBS="$OPENMP_CXXFLAGS"
 fi
 
 AC_SUBST(TEMPO2_OPENMP_CXXFLAGS)
