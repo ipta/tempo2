@@ -1,7 +1,11 @@
 
 ACLOCAL_AMFLAGS = -I autoconf
 
+if BUILD_TESTS
 SUBDIRS=sofa . tests
+else
+SUBDIRS=sofa .
+endif
 DIST_SUBDIRS=sofa plugin unsupported_plugins tests
 
 bin_PROGRAMS=tempo2 getPeriod
@@ -36,9 +40,12 @@ libt2toolkit_la_SOURCES=T2toolkit.C T2toolkit.h TKfit.C TKrobust.C TKfit.h TKmat
 libt2toolkit_la_CFLAGS=-fPIC
 libt2toolkit_la_LIBADD=
 
-libtempo2_la_LIBADD = sofa/libsofa.la
+libtempo2_la_LIBADD = sofa/libsofa.la @TEMPO2_OPENMP_LIBS@
 libtempo2_la_CFLAGS = -fPIC 
 #libtempo2_la_LDFLAGS = -static
+
+# Only calculate_bclt uses OpenMP; keep OpenMP flags off global CXXFLAGS/LIBS.
+calculate_bclt_lo_CXXFLAGS = $(AM_CXXFLAGS) $(CXXFLAGS) @TEMPO2_OPENMP_CXXFLAGS@
 
 if HAVE_LAPACK
 libtempo2_la_LIBADD+=@LIBS_LAPACK@

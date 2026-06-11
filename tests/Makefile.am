@@ -1,5 +1,6 @@
 AM_DEFAULT_SOURCE_EXT=.C
 
+
 test_programs=testTKfit testTempo2 testEndToEnd
 LOG_DRIVER=$(srcdir)/custom-test-driver
 
@@ -16,8 +17,6 @@ EXTRA_DIST=test_data custom-test-driver $(gtest_src) $(gtest_hdr)
 AM_CPPFLAGS = -DTEST_DELTA=1e-9l -DDATDIR=\"$(srcdir)/test_data\" @PTHREAD_CFLAGS@
 
 CPPFLAGS=-I$(srcdir)/gtest-1.7.0/include -I$(srcdir)/gtest-1.7.0 -I$(top_srcdir)
-
-
 
 libgtest_la_SOURCES=gtest-1.7.0/src/gtest-all.cc
 testTKfit_LDADD=libgtest.la ../libt2toolkit.la @PTHREAD_LIBS@ @PTHREAD_CFLAGS@ $(LIBADD_DLOPEN)

@@ -65,7 +65,7 @@
 #include "jpleph.h"
 #include "jpl_int.h"
 
-typedef int bool;
+typedef int boolean;
 #define true 1
 #define false 0
 
@@ -570,7 +570,7 @@ int DLL_FUNC jpl_state( void *ephem, const double et, const int list[14],
     double *buf = eph->cache;
     double t[2];
     const double block_loc = (et - eph->ephem_start) / eph->ephem_step;
-    bool recompute_pvsun;
+    boolean recompute_pvsun;
     const double aufac = 1.0 / eph->au;
 
     /*   error return for epoch out of range  */

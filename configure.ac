@@ -134,11 +134,42 @@ SWIN_LIB_CFITSIO
 
 # Check for openmp (optional package)
 AX_OPENMP([have_openmp=yes],[have_openmp=no])
+TEMPO2_OPENMP_CXXFLAGS=""
+TEMPO2_OPENMP_LIBS=""
 if test X$have_openmp == Xyes; then
-    CFLAGS="$CFLAGS $OPENMP_CFLAGS -DHAVE_OPENMP"
-    CXXFLAGS="$CXXFLAGS $OPENMP_CXXFLAGS -DHAVE_OPENMP"
-    LDFLAGS="$LDFLAGS $OPENMP_CXXFLAGS"
+    TEMPO2_OPENMP_CXXFLAGS="$OPENMP_CXXFLAGS -DHAVE_OPENMP"
+    case "$CXX" in
+        *clang*)
+            TEMPO2_OPENMP_LIBS="-lomp"
+            ;;
+        *)
+            TEMPO2_OPENMP_LIBS="-lgomp"
+            ;;
+    esac
 fi
+
+AC_SUBST(TEMPO2_OPENMP_CXXFLAGS)
+AC_SUBST(TEMPO2_OPENMP_LIBS)
+AM_CONDITIONAL(HAVE_OPENMP, [test x$have_openmp = xyes])
+
+build_tests=yes
+is_darwin=no
+is_clang=no
+if test "x`uname -s 2>/dev/null`" = "xDarwin"; then
+    is_darwin=yes
+fi
+case "$CXX" in
+    *clang*)
+        is_clang=yes
+        ;;
+esac
+
+if test "x$have_openmp" = "xyes" && test "x$is_darwin" = "xyes" && test "x$is_clang" != "xyes"; then
+    build_tests=no
+    AC_MSG_NOTICE([Disabling tests: macOS + OpenMP + non-clang compiler detected])
+fi
+
+AM_CONDITIONAL(BUILD_TESTS, [test "x$build_tests" = "xyes"])
 
 
 
