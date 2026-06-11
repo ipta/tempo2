@@ -132,8 +132,17 @@ SWIN_LIB_PGPLOT
 SWIN_LIB_FFTW
 SWIN_LIB_CFITSIO
 
+AC_ARG_ENABLE([openmp],
+              AS_HELP_STRING([--disable-openmp], [Disable OpenMP support]),
+              [],
+              [enable_openmp=yes])
+
 # Check for openmp (optional package)
-AX_OPENMP([have_openmp=yes],[have_openmp=no])
+if test "x$enable_openmp" = "xyes"; then
+    AX_OPENMP([have_openmp=yes],[have_openmp=no])
+else
+    have_openmp=no
+fi
 TEMPO2_OPENMP_CXXFLAGS=""
 TEMPO2_OPENMP_LIBS=""
 if test X$have_openmp == Xyes; then

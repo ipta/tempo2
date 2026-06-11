@@ -5,6 +5,10 @@ if BUILD_TESTS
 SUBDIRS=sofa . tests
 else
 SUBDIRS=sofa .
+check:
+	$(info "Test suite uses code that requries clang complication on macosx")
+	$(info "This is incompatible with tempo2 when openmp is used")
+	$(error "Tests currently disabled for this platform")
 endif
 DIST_SUBDIRS=sofa plugin unsupported_plugins tests
 
