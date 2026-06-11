@@ -173,6 +173,21 @@ fi
 
 AM_CONDITIONAL(BUILD_TESTS, [test "x$build_tests" = "xyes"])
 
+# Determine compiler to use for test builds.
+# On macOS with SDK 26+, force clang to avoid GCC/SDK incompatibilities.
+TEST_CC="$CC"
+TEST_CXX="$CXX"
+if test "x$is_darwin" = "xyes"; then
+    macos_sdk_major=$(xcrun --sdk macosx --show-sdk-version 2>/dev/null | sed 's/\..*//')
+    if test -n "$macos_sdk_major" && test "$macos_sdk_major" -ge 26 2>/dev/null; then
+        TEST_CC="clang"
+        TEST_CXX="clang++"
+        AC_MSG_NOTICE([Using clang for test builds: macOS SDK $macos_sdk_major detected])
+    fi
+fi
+AC_SUBST(TEST_CC)
+AC_SUBST(TEST_CXX)
+
 
 
 #GSL basic stuff

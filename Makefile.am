@@ -6,9 +6,10 @@ SUBDIRS=sofa . tests
 else
 SUBDIRS=sofa .
 check:
-	$(info "Test suite uses code that requries clang complication on macosx")
-	$(info "This is incompatible with tempo2 when openmp is used")
-	$(error "Tests currently disabled for this platform")
+	@echo "Test suite uses code that requires clang compilation on macosx"; \
+	echo "This is incompatible with tempo2 when openmp is used"; \
+	echo "Tests currently disabled for this platform"; \
+	exit 1
 endif
 DIST_SUBDIRS=sofa plugin unsupported_plugins tests
 
@@ -49,7 +50,7 @@ libtempo2_la_CFLAGS = -fPIC
 #libtempo2_la_LDFLAGS = -static
 
 # Only calculate_bclt uses OpenMP; keep OpenMP flags off global CXXFLAGS/LIBS.
-calculate_bclt_lo_CXXFLAGS = $(AM_CXXFLAGS) $(CXXFLAGS) @TEMPO2_OPENMP_CXXFLAGS@
+libtempo2_la_calculate_bclt_CXXFLAGS = @TEMPO2_OPENMP_CXXFLAGS@
 
 if HAVE_LAPACK
 libtempo2_la_LIBADD+=@LIBS_LAPACK@

@@ -18,12 +18,9 @@ AM_CPPFLAGS = -DTEST_DELTA=1e-9l -DDATDIR=\"$(srcdir)/test_data\" @PTHREAD_CFLAG
 
 CPPFLAGS=-I$(srcdir)/gtest-1.7.0/include -I$(srcdir)/gtest-1.7.0 -I$(top_srcdir)
 
-# On macOS SDK 26+, GCC/OpenMP combinations can fail in test builds.
-# Force clang for tests and drop OpenMP flags in this directory only.
-#MACOSX_SDK_MAJOR=$(shell xcrun --sdk macosx --show-sdk-version 2>/dev/null | sed 's/\..*//')
-TESTS_USE_CLANG=$(shell if [ "`uname -s 2>/dev/null`" = Darwin ] && [ "$(shell xcrun --sdk macosx --show-sdk-version 2>/dev/null | sed 's/\..*//')" -ge 26 ] 2>/dev/null; then echo yes; fi)
-CC=$(if $(TESTS_USE_CLANG),clang,@CC@)
-CXX=$(if $(TESTS_USE_CLANG),clang++,@CXX@)
+# On macOS SDK 26+, force clang for test compilation (detected at configure time).
+CC=@TEST_CC@
+CXX=@TEST_CXX@
 
 
 
