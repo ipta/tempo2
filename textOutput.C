@@ -1982,28 +1982,163 @@ void printGlitch(const pulsar &psr)
     }
 }
 
-double dglep(const pulsar &psr,int gn,double fph)
+static int dglep_eval_phase(double t, double fph, double glf0, double glf0d,
+        double glf1, double tds, double *dph, double *ddph_dt)
 {
-    double tds,plim,dph,t1;
-    int niter;
+    double phase = fph + glf0*t + 0.5*glf1*t*t;
+    double deriv = glf0 + glf1*t;
 
-    tds = psr.param[param_gltd].val[gn]*86400.0;
-    niter=0;
-    plim=1.0e-6;
-    dph = 1000.0;
-    t1 = -fph/(psr.param[param_glf0].val[gn]+psr.param[param_glf0d].val[gn]);
-    do {
-        dph = fph + psr.param[param_glf0].val[gn]*t1 + 0.5*psr.param[param_glf1].val[gn]*t1*t1;
-        if (tds > 0.0) dph=dph+psr.param[param_glf0d].val[gn]*tds*(1.0-exp(-t1/tds));
-        t1=t1-dph/(psr.param[param_glf0].val[gn]+psr.param[param_glf0d].val[gn]);
-        niter++;
-        if (niter>1000)
-        {
-            logerr("Glitch epoch convergence failed");
+    if (tds > 0.0) {
+        const double x = -t/tds;
+        if (!isfinite(x) || x > 700.0) {
             return 0;
         }
-    }while (fabs(dph) > plim);
-    return t1/86400.0;
+        const double em1 = (x < -700.0) ? -1.0 : expm1(x);
+        const double expx = (x < -700.0) ? 0.0 : (em1 + 1.0);
+        phase += glf0d*tds*(-em1);
+        deriv += glf0d*expx;
+    }
+
+    if (!isfinite(phase) || !isfinite(deriv)) {
+        return 0;
+    }
+    *dph = phase;
+    *ddph_dt = deriv;
+    return 1;
+}
+
+double dglep(const pulsar &psr,int gn,double fph)
+{
+    const double glf0 = psr.param[param_glf0].val[gn];
+    const double glf0d = psr.param[param_glf0d].val[gn];
+    const double glf1 = psr.param[param_glf1].val[gn];
+    const double tds = psr.param[param_gltd].val[gn]*86400.0;
+
+    const double plim = 1.0e-6;
+    const double teps = 1.0e-12;
+    const double deriv_eps = 1.0e-30;
+    const int max_iter = 200;
+    const int max_expand = 60;
+
+    const double lin = glf0 + glf0d;
+    double t0 = 0.0;
+    if (fabs(lin) > deriv_eps) {
+        t0 = -fph/lin;
+    }
+
+    double f0, df0;
+    if (!dglep_eval_phase(t0, fph, glf0, glf0d, glf1, tds, &f0, &df0)) {
+        logwarn("Glitch epoch convergence failed (non-finite initial state for zero GLPH solve)");
+        return 0;
+    }
+    if (fabs(f0) <= plim) {
+        return t0/86400.0;
+    }
+
+    // Bracket a root around the initial guess; if we fail, fall back to damped Newton.
+    double halfw = fmax(1.0, 0.25*fabs(t0));
+    if (tds > 0.0) {
+        halfw = fmax(halfw, 0.25*tds);
+    }
+    double left = t0 - halfw;
+    double right = t0 + halfw;
+    double fleft, dfleft, fright, dfright;
+    int left_ok = dglep_eval_phase(left, fph, glf0, glf0d, glf1, tds, &fleft, &dfleft);
+    int right_ok = dglep_eval_phase(right, fph, glf0, glf0d, glf1, tds, &fright, &dfright);
+    int bracketed = left_ok && right_ok && (fleft*fright <= 0.0);
+
+    for (int iexp = 0; iexp < max_expand && !bracketed; ++iexp) {
+        halfw *= 2.0;
+        left = t0 - halfw;
+        right = t0 + halfw;
+        left_ok = dglep_eval_phase(left, fph, glf0, glf0d, glf1, tds, &fleft, &dfleft);
+        right_ok = dglep_eval_phase(right, fph, glf0, glf0d, glf1, tds, &fright, &dfright);
+        bracketed = left_ok && right_ok && (fleft*fright <= 0.0);
+    }
+
+    if (bracketed) {
+        double t = t0;
+        if (t <= left || t >= right) {
+            t = 0.5*(left + right);
+        }
+        for (int niter = 0; niter < max_iter; ++niter) {
+            double dph, ddph_dt;
+            if (!dglep_eval_phase(t, fph, glf0, glf0d, glf1, tds, &dph, &ddph_dt)) {
+                break;
+            }
+            if (fabs(dph) <= plim) {
+                return t/86400.0;
+            }
+
+            double tnext;
+            if (fabs(ddph_dt) > deriv_eps) {
+                tnext = t - dph/ddph_dt;
+                if (!(tnext > left && tnext < right) || !isfinite(tnext)) {
+                    tnext = 0.5*(left + right);
+                }
+            } else {
+                tnext = 0.5*(left + right);
+            }
+
+            double fnext, dfnext;
+            if (!dglep_eval_phase(tnext, fph, glf0, glf0d, glf1, tds, &fnext, &dfnext)) {
+                break;
+            }
+
+            if (fabs(fnext) <= plim || fabs(tnext - t) <= teps*(1.0 + fabs(tnext))) {
+                return tnext/86400.0;
+            }
+
+            if (fleft*fnext <= 0.0) {
+                right = tnext;
+                fright = fnext;
+            } else {
+                left = tnext;
+                fleft = fnext;
+            }
+
+            if (fabs(right - left) <= teps*(1.0 + fmax(fabs(left), fabs(right)))) {
+                return 0.5*(left + right)/86400.0;
+            }
+            t = tnext;
+        }
+    }
+
+    // Fallback if no bracket is found: damped Newton using the true derivative.
+    {
+        double t = t0;
+        for (int niter = 0; niter < max_iter; ++niter) {
+            double dph, ddph_dt;
+            if (!dglep_eval_phase(t, fph, glf0, glf0d, glf1, tds, &dph, &ddph_dt)) {
+                break;
+            }
+            if (fabs(dph) <= plim) {
+                return t/86400.0;
+            }
+
+            const double max_step = fmax(10.0, 0.5*fabs(t) + 1.0);
+            double step;
+            if (fabs(ddph_dt) > deriv_eps) {
+                step = dph/ddph_dt;
+                if (step > max_step) step = max_step;
+                if (step < -max_step) step = -max_step;
+            } else {
+                step = (dph > 0.0 ? max_step : -max_step);
+            }
+
+            double tnext = t - step;
+            if (!isfinite(tnext)) {
+                break;
+            }
+            if (fabs(tnext - t) <= teps*(1.0 + fabs(tnext))) {
+                return tnext/86400.0;
+            }
+            t = tnext;
+        }
+    }
+
+    logwarn("Glitch epoch convergence failed (Couldn't guess a new PEPOCH for zero GLPH)");
+    return 0;
 }
 //
 // Function to determine the error in the DM estimations and apply this to the 
