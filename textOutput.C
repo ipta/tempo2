@@ -1990,11 +1990,11 @@ static int dglep_eval_phase(double t, double fph, double glf0, double glf0d,
 
     if (tds > 0.0) {
         const double x = -t/tds;
-        if (!isfinite(x) || x > 700.0 || x < -700.0) {
+        if (!isfinite(x) || x > 700.0) {
             return 0;
         }
-        const double em1 = expm1(x);
-        const double expx = em1 + 1.0;
+        const double em1 = (x < -700.0) ? -1.0 : expm1(x);
+        const double expx = (x < -700.0) ? 0.0 : (em1 + 1.0);
         phase += glf0d*tds*(-em1);
         deriv += glf0d*expx;
     }
