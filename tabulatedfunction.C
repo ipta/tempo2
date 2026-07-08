@@ -44,7 +44,7 @@ TabulatedFunction_load(TabulatedFunction *func,
     char line[1024]="", *c;
     TabulatedFunctionSample sample;
 // UNUSED VARIABLE //     int narg;
-
+    logdbg("Loading tabulated function from %s", fileName);
     func->samples.clear();
 
     /*   sprintf(fname, "%s/clock2/%s.clk", getenv("TEMPO2"), fileName); */
@@ -92,6 +92,7 @@ TabulatedFunction_load(TabulatedFunction *func,
     }
 
     fclose(f); 
+    logdbg("Loaded %d samples from %s", (int)func->samples.size(), fileName);
 
     /* Make shortened filename and store it */
     /* find last / */

@@ -204,6 +204,8 @@ static void addIndexedClockFile(const std::string &filePath, int defaultBadnessO
   func.clockTo = to;
   func.badness = badness + (float)defaultBadnessOffset;
   g_clockCorrectionFunctions.push_back(func);
+  logdbg("Indexed clock correction %s : %s -> %s badness %.3g",
+      func.fileName.c_str(), func.clockFrom.c_str(), func.clockTo.c_str(), func.badness);
 }
 
 static std::vector<std::string> globClockFiles(const std::string &pattern)
@@ -239,7 +241,7 @@ static void ensureClockCorrectionsInitialized(int dispWarnings)
 {
   if (g_clockCorrectionsInitialized)
     return;
-
+    logdbg("Initialise clock file index");
   int defaultBadnessOffset = 0;
 
   if (std::strlen(tempo2_clock_path) > 0)
@@ -287,13 +289,15 @@ static void ensureClockCorrectionsInitialized(int dispWarnings)
   }
 
   g_clockCorrectionsInitialized = true;
+      logdbg("Done with clock file index");
+
 }
 
 static void ensureFunctionLoaded(ClockCorrectionFunction *func)
 {
   if (func->loaded)
     return;
-
+  logdbg("Loading clock correction function from %s (%s)", func->fileName.c_str(), func->fullPath.c_str());
   TabulatedFunction_load(&func->table, const_cast<char *>(func->fullPath.c_str()));
   func->startMJD = TabulatedFunction_getStartX(&func->table);
   func->endMJD = TabulatedFunction_getEndX(&func->table);
@@ -385,9 +389,6 @@ static PathBuildResult buildDirectedPath(const std::string &clockFrom,
   for (size_t i = 0; i < g_clockCorrectionFunctions.size(); ++i)
   {
     ClockCorrectionFunction *func = &g_clockCorrectionFunctions[i];
-    if (!functionValidAtMJD(func, mjd))
-      continue;
-
     const int fromNode = getNode(func->clockFrom);
     const int toNode = getNode(func->clockTo);
     Edge e;
@@ -415,86 +416,114 @@ static PathBuildResult buildDirectedPath(const std::string &clockFrom,
     reverseAdjacency[edges[i].to].push_back(edges[i].from);
   }
 
-  std::vector<float> dist(nodeKeys.size(), FLT_MAX);
-  std::vector<int> visited(nodeKeys.size(), 0);
-  std::vector<int> prevEdge(nodeKeys.size(), -1);
-  std::vector<int> prevNode(nodeKeys.size(), -1);
-  dist[source] = 0.0f;
-
+  std::vector<int> edgeBlocked(edges.size(), 0);
   while (true)
   {
-    int bestNode = -1;
-    float best = FLT_MAX;
-    for (size_t i = 0; i < dist.size(); ++i)
-    {
-      if (!visited[i] && dist[i] < best)
-      {
-        best = dist[i];
-        bestNode = (int)i;
-      }
-    }
+    std::vector<float> dist(nodeKeys.size(), FLT_MAX);
+    std::vector<int> visited(nodeKeys.size(), 0);
+    std::vector<int> prevEdge(nodeKeys.size(), -1);
+    std::vector<int> prevNode(nodeKeys.size(), -1);
+    dist[source] = 0.0f;
 
-    if (bestNode < 0)
-      break;
-    visited[bestNode] = 1;
-    if (bestNode == target)
-      break;
-
-    for (int edgeIdx : adjacency[bestNode])
+    while (true)
     {
-      const Edge &edge = edges[edgeIdx];
-      const float newDist = dist[bestNode] + edge.weight;
-      if (newDist < dist[edge.to])
+      int bestNode = -1;
+      float best = FLT_MAX;
+      for (size_t i = 0; i < dist.size(); ++i)
       {
-        dist[edge.to] = newDist;
-        prevEdge[edge.to] = edgeIdx;
-        prevNode[edge.to] = bestNode;
-      }
-    }
-  }
-
-  if (!visited[target])
-  {
-    if (source < (int)reverseAdjacency.size() && target < (int)reverseAdjacency.size())
-    {
-      std::vector<int> stack;
-      std::vector<int> seen(nodeKeys.size(), 0);
-      stack.push_back(source);
-      seen[source] = 1;
-      while (!stack.empty())
-      {
-        const int v = stack.back();
-        stack.pop_back();
-        if (v == target)
+        if (!visited[i] && dist[i] < best)
         {
-          result.reverseHint = true;
-          break;
+          best = dist[i];
+          bestNode = (int)i;
         }
-        for (int next : reverseAdjacency[v])
+      }
+
+      if (bestNode < 0)
+        break;
+      visited[bestNode] = 1;
+      if (bestNode == target)
+        break;
+
+      for (int edgeIdx : adjacency[bestNode])
+      {
+        if (edgeBlocked[edgeIdx])
+          continue;
+        const Edge &edge = edges[edgeIdx];
+        const float newDist = dist[bestNode] + edge.weight;
+        if (newDist < dist[edge.to])
         {
-          if (!seen[next])
+          dist[edge.to] = newDist;
+          prevEdge[edge.to] = edgeIdx;
+          prevNode[edge.to] = bestNode;
+        }
+      }
+    }
+
+    if (!visited[target])
+    {
+      if (source < (int)reverseAdjacency.size() && target < (int)reverseAdjacency.size())
+      {
+        std::vector<int> stack;
+        std::vector<int> seen(nodeKeys.size(), 0);
+        stack.push_back(source);
+        seen[source] = 1;
+        while (!stack.empty())
+        {
+          const int v = stack.back();
+          stack.pop_back();
+          if (v == target)
           {
-            seen[next] = 1;
-            stack.push_back(next);
+            result.reverseHint = true;
+            break;
+          }
+          for (int next : reverseAdjacency[v])
+          {
+            if (!seen[next])
+            {
+              seen[next] = 1;
+              stack.push_back(next);
+            }
           }
         }
       }
+      return result;
     }
-    return result;
+
+    std::vector<int> candidateEdgeIdx;
+    for (int v = target; v != source; v = prevNode[v])
+    {
+      if (v < 0 || prevEdge[v] < 0)
+      {
+        candidateEdgeIdx.clear();
+        break;
+      }
+      candidateEdgeIdx.push_back(prevEdge[v]);
+    }
+    std::reverse(candidateEdgeIdx.begin(), candidateEdgeIdx.end());
+
+    if (candidateEdgeIdx.empty())
+      return result;
+
+    bool allEdgesValidAtMJD = true;
+    for (int edgeIdx : candidateEdgeIdx)
+    {
+      ClockCorrectionFunction *func = &g_clockCorrectionFunctions[edges[edgeIdx].funcIndex];
+      if (!functionValidAtMJD(func, mjd))
+      {
+        edgeBlocked[edgeIdx] = 1;
+        allEdgesValidAtMJD = false;
+      }
+    }
+
+    if (allEdgesValidAtMJD)
+    {
+      result.functionIndices.clear();
+      for (int edgeIdx : candidateEdgeIdx)
+        result.functionIndices.push_back(edges[edgeIdx].funcIndex);
+      return result;
+    }
   }
 
-  std::vector<size_t> reversed;
-  for (int v = target; v != source; v = prevNode[v])
-  {
-    if (v < 0 || prevEdge[v] < 0)
-    {
-      reversed.clear();
-      break;
-    }
-    reversed.push_back(edges[prevEdge[v]].funcIndex);
-  }
-  std::reverse(reversed.begin(), reversed.end());
-  result.functionIndices.swap(reversed);
   return result;
 }
 
