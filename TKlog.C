@@ -22,11 +22,12 @@ int logerr_check(){
     if(TK_warnCount){
         _LOG(WARNCOLOR "Notice:" RESETCOLOR " There were %u warnings. Summaries are shown below, check logs for full details.\n",TK_warnCount);
         for (unsigned i=0; i < TK_warnCount; ++i){
-            _LOG(BOLDCOLOR "Warning #%u:" RESETCOLOR " %s\n",i+1,TK_warnlog[i]);
-            if(i > TK_MAX_ERRORS){
-                _LOG(WARNCOLOR "   ... too many warnings\n" RESETCOLOR);
+            if(i >= TK_MAX_ERRORS){
+                _LOG(WARNCOLOR "   ... plus %u warnings not shown\n" RESETCOLOR,(unsigned)(TK_warnCount - TK_MAX_ERRORS));
                 break;
             }
+            _LOG(BOLDCOLOR "Warning #%u:" RESETCOLOR " %s\n",i+1,TK_warnlog[i]);
+
         }
         TK_warnCount=0;
     }
@@ -34,11 +35,11 @@ int logerr_check(){
     if(count){
         _LOG("\n\n" ERRORCOLOR "Notice:" RESETCOLOR " There were %u errors! Summaries are shown below, check logs for full details.\n",count);
         for (unsigned i=0; i < count; ++i){
-            _LOG(ERRORCOLOR "Error #%u" RESETCOLOR " = " BOLDCOLOR "%s" RESETCOLOR ENDL,i+1,TK_errorlog[i]);
-            if(i > TK_MAX_ERRORS){
-                _LOG(ERRORCOLOR "  ... too many errors\n" RESETCOLOR);
+            if(i >= TK_MAX_ERRORS){
+                _LOG(ERRORCOLOR "  ... plus %u errors not shown\n" RESETCOLOR,(unsigned)(count - TK_MAX_ERRORS));
                 break;
             }
+            _LOG(ERRORCOLOR "Error #%u" RESETCOLOR " = " BOLDCOLOR "%s" RESETCOLOR ENDL,i+1,TK_errorlog[i]);
 
         }
     }
