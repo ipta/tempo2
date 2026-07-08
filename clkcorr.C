@@ -1,7 +1,7 @@
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
-//  Copyright (C) 2006,2007,2008,2009, George Hobbs, Russell Edwards
+//  Copyright (C) 2026 M. Keith, University of Manchester
 
 /*
  *    This file is part of TEMPO2. 
@@ -27,754 +27,816 @@
  *    timing model.
  */
 
-/*-*-C-*- */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
-#include <limits.h>
-#include <float.h>
-#include <glob.h>
+ /** This is a re-write of the tempo2 clock correction logic that avoids the use of custom 
+  * dynamic arrays and re-uses standard C++ infrastructure. It also avoids reading all files at startup
+  * instead indexing the files and loading them as required 
+  * 
+  * Clock files are located in *.clk in the following paths:
+  * * $TEMPO2/clock
+  * * global variable tempo2_clock_path
+  * 
+  * Clock files files have a one-line header
+  * # FROM TO [BADNESS]
+  * where FROM is the source clock, e.g. UTC(JB)
+  * TO is the target clock, e.g.  UTC(GPS)
+  * Badness is an optional float that adds a penalty to the search path.
+  * 
+  * Then files contain lines with
+  * MJD CORRECTION
+  * where correction is in seconds. Lines starting with # should be ignored.
+  * 
+  * There may be multiple paths from clockFrom to clockTo and clock files don't always cover the full time range. E.g. there may be one route used for early data and one for later data.
+  * When going from A to B, first build all routes from A to B and load the clock file contents. Then determine the time validity of that route, caching these so that future requests for that
+  * observatory can re-use the same route. If no route is found, use Dijkstra's shortest path algorithm to find a route and load the files.
+  * 
+  * These functions are all exposed as C in the tempo2.h but are implemented in C++ and use the C++ standard library.
+  * 
+  * */
+
 
 #include "tempo2.h"
-#include "dynarr.h"
 #include "tabulatedfunction.h"
 
-/* a sampled function connecting two clocks */
-typedef struct
+#include <algorithm>
+#include <cctype>
+#include <cerrno>
+#include <cfloat>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <glob.h>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
+namespace {
+
+struct ClockCorrectionFunction {
+  TabulatedFunction table;
+  std::string fullPath;
+  std::string fileName;
+  std::string clockFrom;
+  std::string clockTo;
+  float badness;
+  bool loaded;
+  double startMJD;
+  double endMJD;
+
+  ClockCorrectionFunction()
+    : badness(1.0f), loaded(false), startMJD(0.0), endMJD(0.0) {}
+};
+
+struct ClockSequence {
+  std::vector<size_t> functionIndices;
+  std::string clockFrom;
+  std::string clockTo;
+  std::string clockFromKey;
+  std::string clockToKey;
+  double startMJD;
+  double endMJD;
+
+  ClockSequence() : startMJD(0.0), endMJD(0.0) {}
+};
+
+struct PathBuildResult {
+  std::vector<size_t> functionIndices;
+  bool sourcePresent;
+  bool targetPresent;
+  bool reverseHint;
+
+  PathBuildResult() : sourcePresent(false), targetPresent(false), reverseHint(false) {}
+};
+
+static bool g_clockCorrectionsInitialized = false;
+static std::vector<ClockCorrectionFunction> g_clockCorrectionFunctions;
+static std::vector<ClockSequence> g_clockCorrectionSequences;
+
+static std::string trim(const std::string &s)
 {
-    TabulatedFunction table;
-    char clockFrom[16];
-    char clockTo[16];
-    float badness;
-    //  DynamicArray samples; 
-} ClockCorrectionFunction;
-
-
-/* Local static variables */
-
-static int clockCorrections_initialized = 0;
-DynamicArray clockCorrectionFunctions; /* All loaded functions */
-DynamicArray clockCorrectionSequences; /* All auto-computed sequences.
-NOTE: elements are Dynamic arrays of
-POINTERS
-into clockCorrectionFunctions
-array */
-
-/************************************************************************/
-
-    void
-ClockCorrectionFunction_load(ClockCorrectionFunction *func,
-        char *fileName)
-{
-    int narg;
-
-    TabulatedFunction_load(&func->table, fileName);
-
-    narg = sscanf(func->table.header_line+1, // skip # 
-            "%s %s %f", func->clockFrom, func->clockTo, &func->badness);
-    if (narg < 2)
-    {
-        fprintf(stderr, 
-                "Error parsing clock file %s: first line must be of form # clock_from clock_to\n",
-                fileName);
-        exit(1);
-    }
-    else if (narg != 3)
-        func->badness = 1.0;
+  const std::string ws(" \t\r\n");
+  const std::string::size_type first = s.find_first_not_of(ws);
+  if (first == std::string::npos)
+    return std::string();
+  const std::string::size_type last = s.find_last_not_of(ws);
+  return s.substr(first, last - first + 1);
 }
 
-    double
-ClockCorrectionFunction_getCorrection(ClockCorrectionFunction *func,
-        double mjd)
+static std::string normalizeClockName(const std::string &name)
 {
-    return TabulatedFunction_getValue(&func->table, mjd);
+  std::string out = trim(name);
+  std::transform(out.begin(), out.end(), out.begin(),
+      [](unsigned char c){ return (char)std::toupper(c); });
+  return out;
 }
 
-    double
-ClockCorrectionFunction_getStartMJD(ClockCorrectionFunction *func)
+static bool clockNameEquals(const std::string &a, const std::string &b)
 {
-    return TabulatedFunction_getStartX(&func->table);
-}
-    double
-ClockCorrectionFunction_getEndMJD(ClockCorrectionFunction *func)
-{
-    return TabulatedFunction_getEndX(&func->table);
+  return normalizeClockName(a) == normalizeClockName(b);
 }
 
-
-    double
-ClockCorrectionSequence_getStartMJD(DynamicArray *sequence)
+static std::string basenameFromPath(const std::string &path)
 {
-    size_t ifunc;
-    ClockCorrectionFunction *func;
-    double mjd = 0.0, thismjd;
-
-    for (ifunc=0; ifunc < sequence->nelem; ifunc++)
-    {
-        func = ((ClockCorrectionFunction **)sequence->data)[ifunc];
-        thismjd = ClockCorrectionFunction_getStartMJD(func);
-        if (thismjd > mjd)
-            mjd = thismjd;
-    }
-
-    return mjd;
-}
-    double
-ClockCorrectionSequence_getEndMJD(DynamicArray *sequence)
-{
-    size_t ifunc;
-    ClockCorrectionFunction *func;
-    double mjd = 1e6, thismjd;
-
-    for (ifunc=0; ifunc < sequence->nelem; ifunc++)
-    {
-        func = ((ClockCorrectionFunction **)sequence->data)[ifunc];
-        thismjd =  ClockCorrectionFunction_getEndMJD(func);
-        if (thismjd < mjd)
-            mjd = thismjd;
-    }
-
-    return mjd;
+  const std::string::size_type pos = path.find_last_of('/');
+  if (pos == std::string::npos)
+    return path;
+  return path.substr(pos + 1);
 }
 
-void initialize_ClockCorrections(int dispWarnings)
+static bool parseClockHeaderLine(const std::string &header,
+    std::string *clockFrom, std::string *clockTo, float *badness)
 {
-    glob_t g;
-    char pattern[1024];
-    char **pfname;
-    int globRet;
-    int default_badness=0;
+  char from[64];
+  char to[64];
+  float localBadness = 1.0f;
 
-    ClockCorrectionFunction func;
-    DynamicArray_init(&clockCorrectionFunctions, sizeof(ClockCorrectionFunction));
-    DynamicArray_init(&clockCorrectionSequences, sizeof(DynamicArray));
+  if (header.empty() || header[0] != '#')
+    return false;
 
+  const int narg = std::sscanf(header.c_str() + 1, "%63s %63s %f", from, to, &localBadness);
+  if (narg < 2)
+    return false;
 
-    if(strlen(tempo2_clock_path)){
+  *clockFrom = from;
+  *clockTo = to;
+  *badness = (narg == 3) ? localBadness : 1.0f;
+  return true;
+}
 
-        logmsg("Note, using '%s' to look for extra clock files",tempo2_clock_path);
-        /* load all .clk files in tempo2 clock path */
-        sprintf(pattern, "%s/*.clk", tempo2_clock_path);
-        globRet = glob(pattern, 0, NULL, &g);
-        if (globRet == GLOB_NOSPACE)
-        { printf("Out of memory in clkcorr.C\n"); exit(1);}
+static void addIndexedClockFile(const std::string &filePath, int defaultBadnessOffset)
+{
+  FILE *f = std::fopen(filePath.c_str(), "r");
+  if (f == NULL)
+  {
+    std::fprintf(stderr, "Fatal Error: Unable to open file %s for reading: %s\n",
+        filePath.c_str(), std::strerror(errno));
+    std::exit(1);
+  }
+
+  char headerLine[1024];
+  if (std::fgets(headerLine, sizeof(headerLine), f) == NULL)
+  {
+    std::fprintf(stderr,
+        "Error parsing clock file %s: file appears empty or corrupted.\n",
+        filePath.c_str());
+    std::fclose(f);
+    std::exit(1);
+  }
+  std::fclose(f);
+
+  std::string from;
+  std::string to;
+  float badness = 1.0f;
+  if (!parseClockHeaderLine(headerLine, &from, &to, &badness))
+  {
+    std::fprintf(stderr,
+        "Error parsing clock file %s: first line must be of form # clock_from clock_to [badness]\n",
+        filePath.c_str());
+    std::exit(1);
+  }
+
+  ClockCorrectionFunction func;
+  func.fullPath = filePath;
+  func.fileName = basenameFromPath(filePath);
+  func.clockFrom = from;
+  func.clockTo = to;
+  func.badness = badness + (float)defaultBadnessOffset;
+  g_clockCorrectionFunctions.push_back(func);
+}
+
+static std::vector<std::string> globClockFiles(const std::string &pattern)
+{
+  glob_t g;
+  std::vector<std::string> files;
+
+  const int globRet = glob(pattern.c_str(), 0, NULL, &g);
+  if (globRet == GLOB_NOSPACE)
+  {
+    std::fprintf(stderr, "Out of memory in clkcorr.C\n");
+    std::exit(1);
+  }
 #ifdef GLOB_ABORTED
-        else if (globRet == GLOB_ABORTED)
-        { printf("Read error in clkcorr.C\n"); exit(1); }
+  if (globRet == GLOB_ABORTED)
+  {
+    std::fprintf(stderr, "Read error in clkcorr.C\n");
+    std::exit(1);
+  }
 #endif
-#ifdef GLOB_NOMATCH
-        else if (globRet == GLOB_NOMATCH)
-        {
-            logerr("No clock correction files in '%s'\n",tempo2_clock_path);
-        }
-#endif
-        else {
-            for (pfname = g.gl_pathv; *pfname != NULL; pfname++)
-            {
-                ClockCorrectionFunction_load(&func, *pfname);
-                DynamicArray_push_back(&clockCorrectionFunctions, &func);
-                    logmsg("Loaded extra clock correction %s : %s -> %s badness %.3g",
-                            func.table.fileName, func.clockFrom, func.clockTo, func.badness);
-            }
-            clockCorrections_initialized = 1;
-            globfree(&g);
-            default_badness++;
-        }
-    }
+  if (globRet == 0)
+  {
+    for (char **pfname = g.gl_pathv; *pfname != NULL; ++pfname)
+      files.push_back(*pfname);
+  }
+  globfree(&g);
 
-    /* load all .clk files in $TEMPO2/clock */
-    sprintf(pattern, "%s/clock/*.clk", getenv(TEMPO2_ENVIRON));
-    globRet = glob(pattern, 0, NULL, &g);
-    if (globRet == GLOB_NOSPACE)
-    { printf("Out of memory in clkcorr.C\n"); exit(1);}
-#ifdef GLOB_ABORTED
-    else if (globRet == GLOB_ABORTED)
-    { printf("Read error in clkcorr.C\n"); exit(1); }
-#endif
-#ifdef GLOB_NOMATCH
-    else if (globRet == GLOB_NOMATCH)
-    { printf("No clock correction files in $TEMPO2/clock\n"); exit(1); }
-#endif
-
-    for (pfname = g.gl_pathv; *pfname != NULL; pfname++)
-    {
-        ClockCorrectionFunction_load(&func, *pfname);
-        func.badness += default_badness;
-        DynamicArray_push_back(&clockCorrectionFunctions, &func);
-            logdbg("Loaded clock correction %s : %s -> %s badness %.3g",
-                    func.table.fileName, func.clockFrom, func.clockTo, func.badness);
-    }
-    clockCorrections_initialized = 1;
-    globfree(&g);
+  std::sort(files.begin(), files.end());
+  return files;
 }
 
-    void
-defineClockCorrectionSequence(char *fileList_in,int dispWarnings)
+static void ensureClockCorrectionsInitialized(int dispWarnings)
 {
-    ClockCorrectionFunction *func;
-    size_t ifunc;
-    DynamicArray seq;
-    char fileList[2048], *c;
-    const char *white=" \t\r\n";
+  if (g_clockCorrectionsInitialized)
+    return;
 
-    if  ( clockCorrections_initialized != 1 )
-        initialize_ClockCorrections(dispWarnings);
+  int defaultBadnessOffset = 0;
 
-    DynamicArray_init(&seq, sizeof(ClockCorrectionFunction *));
+  if (std::strlen(tempo2_clock_path) > 0)
+  {
+    logmsg("Note, using '%s' to look for extra clock files", tempo2_clock_path);
+    const std::string pattern = std::string(tempo2_clock_path) + "/*.clk";
+    const std::vector<std::string> extraFiles = globClockFiles(pattern);
 
-    /* for each file name, find the function from the list of loaded ones,
-       and add a pointer into that list to the
-       array defining the present sequence */
-    strcpy(fileList, fileList_in);
-    for (c=strtok(fileList, white); c!=NULL; c=strtok(NULL, white))
-    {
-        for (ifunc=0; ifunc < clockCorrectionFunctions.nelem; ifunc++)
-        {
-            func = ((ClockCorrectionFunction *)clockCorrectionFunctions.data)+ifunc;
-            if (!strcmp(func->table.fileName, c))
-                break;
-        }
-        if (ifunc == clockCorrectionFunctions.nelem)
-        {
-            printf( "Requested clock correction file %s not found!\n",c);
-            exit(1);
-        }
-        DynamicArray_push_back(&seq, &func);
-    }
-
-    /* save the sequence in the list of sequences*/
-    DynamicArray_push_back(&clockCorrectionSequences, &seq);
-}
-
-/* Function to make a clock correction sequence using Dijkstra's
-   shortest path algorithm , see 
-http://en.wikipedia.org/wiki/Dijkstra%27s_algorithm */
-DynamicArray *makeClockCorrectionSequence(const char *clockFrom, const char *clockTo,
-        double mjd,int warnings)
-{
-    size_t slen = 16;
-    DynamicArray names; /* Array of clock names. Other values index this arr */
-    int *S; /* Clocks for which shortest path are known */
-// UNUSED VARIABLE //     int n_known;
-    int *Q; /* Remaining clocks */
-    float *d; /* Best distance to a clock */
-    int *edge_to_previous; /* edge to use to link to previous node */ 
-    int s, t; /* indices of clockFrom, clockTo */
-    size_t ifunc;
-    int iclock;
-    ClockCorrectionFunction *func;
-    char *clock;
-    int to_present, from_present;
-    int ibest;
-    float best;
-    /* make a list of edges */
-    typedef struct
-    {
-        int from;
-        int to;
-        ClockCorrectionFunction *func;
-    } Edge;
-    Edge *edges;
-    int iedge, v, nedges;
-    int istep, nsteps;
-    DynamicArray seq;
-
-    //  printf("HERE %s %s %lf %d\n",clockFrom,clockTo,mjd,warnings);
-
-    DynamicArray_init(&names, slen);
-
-    /* initialize list of all known clocks, and list of edges
-       for functions that cover the requested mjd */
-    edges = (Edge *)malloc(sizeof(Edge)*clockCorrectionFunctions.nelem);
-    iedge = 0;
-
-    for (ifunc=0; ifunc < clockCorrectionFunctions.nelem; ifunc++)
-    {
-        func = ((ClockCorrectionFunction *)clockCorrectionFunctions.data)+ifunc;
-        if (ClockCorrectionFunction_getStartMJD(func) <= mjd &&
-                ClockCorrectionFunction_getEndMJD(func) >= mjd)
-        {
-            /* see if to and from clocks there already */
-            to_present = from_present = 0;
-            for (iclock=0;  
-                    iclock < (int)names.nelem && !(to_present && from_present); iclock++)
-            {
-                clock = ((char *)names.data)+iclock*slen;
-                if (!strcasecmp(clock, func->clockTo))
-                {
-                    to_present = 1;
-                    edges[iedge].to = iclock;
-                }
-                if (!strcasecmp(clock, func->clockFrom))
-                {
-                    from_present = 1;
-                    edges[iedge].from = iclock;
-                    // 	  printf("%s present already\n", func->clockFrom); 
-                }
-                /* 	else */
-                /* 	  printf("%s != %s!\n", clock, func->clockFrom); */
-            }
-            /* add to list if not already present */
-            if (!to_present)
-            {
-                DynamicArray_push_back(&names, func->clockTo);
-                edges[iedge].to = names.nelem-1;
-            }
-            if (!from_present)
-            {
-                DynamicArray_push_back(&names, func->clockFrom);
-                edges[iedge].from = names.nelem-1;
-            }
-            //        printf("Add edge %d <%s> <%s> %d %d\n", iedge, func->clockTo, func->clockFrom,  
-            //  	     edges[iedge].to, edges[iedge].from);  
-            edges[iedge].func = func;
-            iedge++;
-        }
-    }
-    nedges = iedge;
-
-    /* find requested start (s) and end (t) clock in array of names */
-    s = t = -1;
-    for (iclock=0; iclock < (int)names.nelem && (t < 0 || s < 0); iclock++)
-    {
-        clock = ((char *)names.data)+iclock*slen;
-        if (!strcasecmp(clock, clockFrom))
-            s = iclock;
-        if (!strcasecmp(clock, clockTo))
-            t = iclock;
-    }
-    if (s < 0)
-    {
-        char msg[1000],msg2[1000];
-        sprintf(msg,"no clock corrections available for clock %s for MJD",
-                clockFrom);
-        sprintf(msg2,"%.1f",mjd);
-        displayMsg(1,"CLK3",msg,msg2,warnings);
-        //logerr("no clock corrections available for clock %s -> %s for MJD %.1f",clockFrom,clockTo,mjd);
-        //    printf("EXITING 1\n");
-        free(edges); edges = NULL;
-        DynamicArray_free(&names);
-        return NULL;
-    }
-    if (t < 0)
-    {
-        char msg[1000],msg2[1000];
-        sprintf(msg,"no clock corrections available for clock %s for MJD",
-                clockTo);
-        sprintf(msg2,"%.1f",mjd);
-        displayMsg(1,"CLK3",msg,msg2,warnings);
-        //logerr("no clock corrections available for clock %s -> %s for MJD %.1f",clockFrom,clockTo,mjd);
-
-        //    printf("EXITING 2\n");
-        free(edges); edges = NULL;
-        DynamicArray_free(&names);
-        return NULL;
-    }
-
-    /* initialize S, Q, d, p */
-    S = (int *)malloc(sizeof(int)*names.nelem);
-    Q = (int *)malloc(sizeof(int)*names.nelem);
-    d = (float *)malloc(sizeof(float)*names.nelem);
-    edge_to_previous = (int *)malloc(sizeof(int)*names.nelem);
-    for (iclock=0; iclock < (int)names.nelem; iclock++)
-    {
-        S[iclock] = 0;
-        Q[iclock] = 1;
-        d[iclock] = FLT_MAX;
-        edge_to_previous[iclock] = -1;
-    }
-    d[s] = 0.0;
-    /* main algorithm */
-    while (1)
-    {
-        /* find the member of Q with the lowest d */
-        best = FLT_MAX;
-        ibest = -1;
-        for (iclock=0; iclock < (int)names.nelem; iclock++)
-            if (Q[iclock] && d[iclock] < best)
-            {
-                best = d[iclock];
-                ibest = iclock;
-            }
-        if (ibest == -1)
-            break;
-        Q[ibest] = 0; /* remove it from Q */
-        S[ibest] = 1; /* add it to S */
-        if (ibest == t)
-            break; /* shortest path found */
-        /* for every edge connected to ibest */
-        /*     printf("Looking for edges connected to %s d[%d] = %f\n",   */
-        /*  	   ((char *)names.data)+ibest*slen, ibest, best);  */
-        for (iedge=0; iedge < nedges; iedge++)
-            if (edges[iedge].from==ibest || edges[iedge].to==ibest)
-            {
-                /* set v to where the edge connects to */
-                if (edges[iedge].from==ibest)
-                    v = edges[iedge].to;
-                else
-                    v = edges[iedge].from;
-                /* use this edge  if it is better */
-                // 	printf("Try %s %s badness %f\n", 
-                // 	       edges[iedge].func->clockFrom, edges[iedge].func->clockTo,  
-                // 	       edges[iedge].func->badness); 
-                if (d[v] > d[ibest] + edges[iedge].func->badness)
-                {
-                    d[v] = d[ibest] + edges[iedge].func->badness;
-                    edge_to_previous[v] = iedge;
-                    /*  	  printf("  edge %d --> %d %f\n", iedge, v, d[v]); */
-                }
-                /*	else */
-                /*  printf("Reject %s %s\n", edges[iedge].func->clockFrom, edges[iedge].func->clockTo); */
-            }
-    }
-
-    //    printf("Badness total = %f\n", best);
-    if (ibest == -1)
-    {
-        char msg[1000],msg2[1000];
-        sprintf(msg,"no clock corrections available from %s to %s for MJD",
-                clockFrom,clockTo);
-        sprintf(msg2,"%.1f",mjd);
-        //logerr("no clock corrections available for clock %s -> %s for MJD %.1f",clockFrom,clockTo,mjd);
-        displayMsg(1,"CLK7",msg,msg2,warnings);
-        //    printf("EXITING 3\n");
-        free(edges); edges = NULL;
-        DynamicArray_free(&names);
-        return NULL;
-    }
+    if (extraFiles.empty())
+      logerr("No clock correction files in '%s'", tempo2_clock_path);
     else
     {
+      for (const std::string &path : extraFiles)
+      {
+        addIndexedClockFile(path, 0);
+        const ClockCorrectionFunction &func = g_clockCorrectionFunctions.back();
+        logmsg("Loaded extra clock correction %s : %s -> %s badness %.3g",
+            func.fileName.c_str(), func.clockFrom.c_str(), func.clockTo.c_str(), func.badness);
+      }
+      defaultBadnessOffset = 1;
+    }
+  }
 
-        /* Write out the best path in reverse order, as an edge list to
-           "S" */
-        nsteps = 0;
-        v = t;
-        while (v != s)
+  const char *tempo2 = std::getenv(TEMPO2_ENVIRON);
+  if (tempo2 == NULL || std::strlen(tempo2) == 0)
+  {
+    displayMsg(2, "CLK11", "TEMPO2 environment path is not set", "", dispWarnings);
+    std::exit(1);
+  }
+
+  const std::string defaultPattern = std::string(tempo2) + "/clock/*.clk";
+  const std::vector<std::string> defaultFiles = globClockFiles(defaultPattern);
+  if (defaultFiles.empty())
+  {
+    std::fprintf(stderr, "No clock correction files in $TEMPO2/clock\n");
+    std::exit(1);
+  }
+
+  for (const std::string &path : defaultFiles)
+  {
+    addIndexedClockFile(path, defaultBadnessOffset);
+    const ClockCorrectionFunction &func = g_clockCorrectionFunctions.back();
+    logdbg("Loaded clock correction %s : %s -> %s badness %.3g",
+        func.fileName.c_str(), func.clockFrom.c_str(), func.clockTo.c_str(), func.badness);
+  }
+
+  g_clockCorrectionsInitialized = true;
+}
+
+static void ensureFunctionLoaded(ClockCorrectionFunction *func)
+{
+  if (func->loaded)
+    return;
+
+  TabulatedFunction_load(&func->table, const_cast<char *>(func->fullPath.c_str()));
+  func->startMJD = TabulatedFunction_getStartX(&func->table);
+  func->endMJD = TabulatedFunction_getEndX(&func->table);
+  func->loaded = true;
+}
+
+static bool functionValidAtMJD(ClockCorrectionFunction *func, double mjd)
+{
+  ensureFunctionLoaded(func);
+  return func->startMJD <= mjd && func->endMJD >= mjd;
+}
+
+static std::pair<double,double> sequenceMJDRange(const std::vector<size_t> &indices)
+{
+  double start = 0.0;
+  double end = 1e6;
+
+  for (size_t idx : indices)
+  {
+    ClockCorrectionFunction *func = &g_clockCorrectionFunctions[idx];
+    ensureFunctionLoaded(func);
+    if (func->startMJD > start)
+      start = func->startMJD;
+    if (func->endMJD < end)
+      end = func->endMJD;
+  }
+
+  return std::make_pair(start, end);
+}
+
+static bool sequenceMatches(const ClockSequence &seq,
+    const std::string &clockFrom, const std::string &clockTo, double mjd)
+{
+  return seq.clockFromKey == normalizeClockName(clockFrom)
+    && seq.clockToKey == normalizeClockName(clockTo)
+    && seq.startMJD <= mjd
+    && seq.endMJD >= mjd;
+}
+
+static int findFunctionIndexFromToken(const std::string &token)
+{
+  for (size_t i = 0; i < g_clockCorrectionFunctions.size(); ++i)
+  {
+    if (g_clockCorrectionFunctions[i].fileName == token)
+      return (int)i;
+  }
+
+  const std::string tokenBase = basenameFromPath(token);
+  for (size_t i = 0; i < g_clockCorrectionFunctions.size(); ++i)
+  {
+    if (g_clockCorrectionFunctions[i].fileName == tokenBase)
+      return (int)i;
+  }
+
+  return -1;
+}
+
+static PathBuildResult buildDirectedPath(const std::string &clockFrom,
+    const std::string &clockTo, double mjd)
+{
+  PathBuildResult result;
+
+  struct Edge {
+    int from;
+    int to;
+    size_t funcIndex;
+    float weight;
+  };
+
+  std::vector<std::string> nodeKeys;
+  std::unordered_map<std::string, int> nodeIndex;
+  std::vector<Edge> edges;
+
+  auto getNode = [&nodeKeys, &nodeIndex](const std::string &name) -> int {
+    const std::string key = normalizeClockName(name);
+    std::unordered_map<std::string, int>::iterator it = nodeIndex.find(key);
+    if (it != nodeIndex.end())
+      return it->second;
+
+    const int idx = (int)nodeKeys.size();
+    nodeKeys.push_back(key);
+    nodeIndex[key] = idx;
+    return idx;
+  };
+
+  const std::string fromKey = normalizeClockName(clockFrom);
+  const std::string toKey = normalizeClockName(clockTo);
+
+  for (size_t i = 0; i < g_clockCorrectionFunctions.size(); ++i)
+  {
+    ClockCorrectionFunction *func = &g_clockCorrectionFunctions[i];
+    if (!functionValidAtMJD(func, mjd))
+      continue;
+
+    const int fromNode = getNode(func->clockFrom);
+    const int toNode = getNode(func->clockTo);
+    Edge e;
+    e.from = fromNode;
+    e.to = toNode;
+    e.funcIndex = i;
+    e.weight = func->badness;
+    edges.push_back(e);
+  }
+
+  result.sourcePresent = (nodeIndex.find(fromKey) != nodeIndex.end());
+  result.targetPresent = (nodeIndex.find(toKey) != nodeIndex.end());
+
+  if (!result.sourcePresent || !result.targetPresent)
+    return result;
+
+  const int source = nodeIndex[fromKey];
+  const int target = nodeIndex[toKey];
+
+  std::vector<std::vector<int> > adjacency(nodeKeys.size());
+  std::vector<std::vector<int> > reverseAdjacency(nodeKeys.size());
+  for (size_t i = 0; i < edges.size(); ++i)
+  {
+    adjacency[edges[i].from].push_back((int)i);
+    reverseAdjacency[edges[i].to].push_back(edges[i].from);
+  }
+
+  std::vector<float> dist(nodeKeys.size(), FLT_MAX);
+  std::vector<int> visited(nodeKeys.size(), 0);
+  std::vector<int> prevEdge(nodeKeys.size(), -1);
+  std::vector<int> prevNode(nodeKeys.size(), -1);
+  dist[source] = 0.0f;
+
+  while (true)
+  {
+    int bestNode = -1;
+    float best = FLT_MAX;
+    for (size_t i = 0; i < dist.size(); ++i)
+    {
+      if (!visited[i] && dist[i] < best)
+      {
+        best = dist[i];
+        bestNode = (int)i;
+      }
+    }
+
+    if (bestNode < 0)
+      break;
+    visited[bestNode] = 1;
+    if (bestNode == target)
+      break;
+
+    for (int edgeIdx : adjacency[bestNode])
+    {
+      const Edge &edge = edges[edgeIdx];
+      const float newDist = dist[bestNode] + edge.weight;
+      if (newDist < dist[edge.to])
+      {
+        dist[edge.to] = newDist;
+        prevEdge[edge.to] = edgeIdx;
+        prevNode[edge.to] = bestNode;
+      }
+    }
+  }
+
+  if (!visited[target])
+  {
+    if (source < (int)reverseAdjacency.size() && target < (int)reverseAdjacency.size())
+    {
+      std::vector<int> stack;
+      std::vector<int> seen(nodeKeys.size(), 0);
+      stack.push_back(source);
+      seen[source] = 1;
+      while (!stack.empty())
+      {
+        const int v = stack.back();
+        stack.pop_back();
+        if (v == target)
         {
-            S[nsteps] = edge_to_previous[v];
-            v = (edges[edge_to_previous[v]].to==v ? 
-                    edges[edge_to_previous[v]].from : edges[edge_to_previous[v]].to);
-            nsteps++;
+          result.reverseHint = true;
+          break;
         }
-
-        /* set up the actual sequence now in the correct order */
-        DynamicArray_init(&seq, sizeof(ClockCorrectionFunction *));
-        if (warnings==0)
-            printf("Using the following chain of clock corrections for %s -> %s\n",
-                    clockFrom, clockTo);
-        for (istep=nsteps-1; istep >=0; istep--)
+        for (int next : reverseAdjacency[v])
         {
-            /* not any more since some functions are excluded (wrong mjd range) */
-            /*     func = ((ClockCorrectionFunction *)clockCorrectionFunctions.data)  */
-            /*       + S[istep]; */
-            func = edges[S[istep]].func;
-            DynamicArray_push_back(&seq, &func);
-            if (warnings==0) printf("%s : %s <-> %s\n", func->table.fileName, func->clockFrom, func->clockTo);
+          if (!seen[next])
+          {
+            seen[next] = 1;
+            stack.push_back(next);
+          }
         }
+      }
     }
-    /* free memory */
-    free(edges); edges = NULL;
-    free(edge_to_previous); edge_to_previous = NULL;
-    free(d); d = NULL;
-    free(Q); Q = NULL;
-    free(S); S = NULL;
-    DynamicArray_free(&names);
-    //  printf("END HERE\n");
-    return (DynamicArray *)DynamicArray_push_back(&clockCorrectionSequences, &seq);
+    return result;
+  }
+
+  std::vector<size_t> reversed;
+  for (int v = target; v != source; v = prevNode[v])
+  {
+    if (v < 0 || prevEdge[v] < 0)
+    {
+      reversed.clear();
+      break;
+    }
+    reversed.push_back(edges[prevEdge[v]].funcIndex);
+  }
+  std::reverse(reversed.begin(), reversed.end());
+  result.functionIndices.swap(reversed);
+  return result;
 }
 
-DynamicArray *getClockCorrectionSequence(const char *clockFrom, const char *clockTo,
-        double mjd,int warnings)
+static const ClockSequence *cacheSequence(const std::vector<size_t> &indices,
+    const std::string &clockFrom, const std::string &clockTo)
 {
-    size_t iseq;
-    DynamicArray *seq;
-    ClockCorrectionFunction *firstFunc, *lastFunc;
+  ClockSequence seq;
+  seq.functionIndices = indices;
+  seq.clockFrom = clockFrom;
+  seq.clockTo = clockTo;
+  seq.clockFromKey = normalizeClockName(clockFrom);
+  seq.clockToKey = normalizeClockName(clockTo);
 
+  const std::pair<double,double> range = sequenceMJDRange(indices);
+  seq.startMJD = range.first;
+  seq.endMJD = range.second;
 
-    //  return makeClockCorrectionSequence(clockFrom, clockTo, mjd,warnings);
-
-    if  ( clockCorrections_initialized != 1 )
-        initialize_ClockCorrections(warnings);
-
-    /* search for the given clocks in the list of already defined sequences */
-    for (iseq=0; iseq < clockCorrectionSequences.nelem; iseq++)
-    {
-        seq = ((DynamicArray *)clockCorrectionSequences.data) + iseq;
-
-        for (int ifunc=0; ifunc < seq->nelem; ++ifunc){
-            ClockCorrectionFunction* func = ((ClockCorrectionFunction **)seq->data)[ifunc];
-        }
-
-        /**
-         * The old code here would fail if we had a chain like
-         * A->B->C->D->E->F
-         * and we asked to go from B to E. It would think we had a reversed chain and apply the correction from F back to A erroniously!
-         */
-        firstFunc = ((ClockCorrectionFunction **)seq->data)[0];
-        lastFunc  = ((ClockCorrectionFunction **)seq->data)[seq->nelem - 1];
-
-        char* seqFrom = firstFunc->clockFrom;
-        char* seqTo = lastFunc->clockTo;
-        if (seq->nelem > 1){
-            ClockCorrectionFunction* nextFunc= ((ClockCorrectionFunction **)seq->data)[1];
-            if((strcasecmp(seqFrom, nextFunc->clockFrom)==0) || (strcasecmp(seqFrom, nextFunc->clockTo)==0)) {
-                // seqFrom cannot really be the end point, so the first correction must be reversed.
-                seqFrom = firstFunc->clockTo;
-            }
-            nextFunc= ((ClockCorrectionFunction **)seq->data)[seq->nelem - 2];
-            if((strcasecmp(seqTo, nextFunc->clockFrom)==0) || (strcasecmp(seqTo, nextFunc->clockTo)==0)) {
-                // seqTo cannot really be the end point, so the last correction must be reversed.
-                seqFrom = lastFunc->clockFrom;
-            }
-        }
-
-        if (
-                (
-                // we can go from From to To in one direction
-                (
-                 !strcasecmp(seqFrom, clockFrom)
-                 && 
-                 !strcasecmp(seqTo, clockTo)
-                ) || (
-                    // or we can to from To to From in the other direction
-                    !strcasecmp(seqTo, clockFrom) 
-                    &&
-                    !strcasecmp(seqFrom, clockTo)
-                    )
-                ) && (
-                // date is within possible range
-                ClockCorrectionSequence_getStartMJD(seq) <= mjd
-                && ClockCorrectionSequence_getEndMJD(seq) >= mjd
-                )
-           ){
-            return seq;
-        }
-    }
-    logdbg("Making clock sequence from %s to %s",clockFrom,clockTo);
-
-    /* no pre-defined sequence found. Search for one using Dijkstra's
-       shortest-path algorithm. */
-    return makeClockCorrectionSequence(clockFrom, clockTo, mjd,warnings);
-
+  g_clockCorrectionSequences.push_back(seq);
+  return &g_clockCorrectionSequences.back();
 }
 
-
-#if 0 /* no longer used */
-    double 
-getClockCorrection(double mjd, char *clockFrom, char *clockTo)
+static const ClockSequence *getClockCorrectionSequenceInternal(const std::string &clockFrom,
+    const std::string &clockTo, double mjd, int warnings)
 {
-    DynamicArray *sequence = getClockCorrectionSequence(clockFrom, clockTo);
-    double correction = 0;
-    size_t ifunc;
-    char *currClock = clockFrom;
-    ClockCorrectionFunction *func;
+  ensureClockCorrectionsInitialized(warnings);
 
-    for (ifunc=0; ifunc < sequence->nelem; ifunc++)
+  for (const ClockSequence &seq : g_clockCorrectionSequences)
+  {
+    if (sequenceMatches(seq, clockFrom, clockTo, mjd))
+      return &seq;
+  }
+
+  logdbg("Making clock sequence from %s to %s", clockFrom.c_str(), clockTo.c_str());
+
+  PathBuildResult result = buildDirectedPath(clockFrom, clockTo, mjd);
+  if (!result.sourcePresent)
+  {
+    char msg[1000], msg2[1000];
+    std::sprintf(msg, "no clock corrections available for clock %s for MJD", clockFrom.c_str());
+    std::sprintf(msg2, "%.1f", mjd);
+    displayMsg(2, "CLK3", msg, msg2, warnings);
+    return NULL;
+  }
+  if (!result.targetPresent)
+  {
+    char msg[1000], msg2[1000];
+    std::sprintf(msg, "no clock corrections available for clock %s for MJD", clockTo.c_str());
+    std::sprintf(msg2, "%.1f", mjd);
+    displayMsg(2, "CLK3", msg, msg2, warnings);
+    return NULL;
+  }
+  if (result.functionIndices.empty())
+  {
+    char msg[1000], msg2[1000];
+    std::sprintf(msg, "no directed clock corrections available from %s to %s for MJD",
+        clockFrom.c_str(), clockTo.c_str());
+    if (result.reverseHint)
+      std::sprintf(msg2, "%.1f (reverse path exists but reverse traversal is disabled)", mjd);
+    else
+      std::sprintf(msg2, "%.1f", mjd);
+    displayMsg(2, "CLK7", msg, msg2, warnings);
+    return NULL;
+  }
+
+  if (warnings == 0)
+  {
+    std::printf("Using the following chain of clock corrections for %s -> %s\n",
+        clockFrom.c_str(), clockTo.c_str());
+    for (size_t idx : result.functionIndices)
     {
-        func = ((ClockCorrectionFunction **)sequence->data)[ifunc];
+      const ClockCorrectionFunction &func = g_clockCorrectionFunctions[idx];
+      std::printf("%s : %s -> %s\n",
+          func.fileName.c_str(), func.clockFrom.c_str(), func.clockTo.c_str());
+    }
+  }
 
-        /* add correction using sign based on direction of correction */
-        correction += ClockCorrectionFunction_getCorrection(func, mjd)
-            * (!strcasecmp(currClock, func->clockFrom) ? 1.0 : -1.0);
+  return cacheSequence(result.functionIndices, clockFrom, clockTo);
+}
 
-        currClock = func->clockTo;
+static bool fillCorrectionsFromSequence(observation *obs,
+    const ClockSequence *sequence, const std::string &clockTo,
+    std::string currentClock, double *totalCorrection)
+{
+  for (size_t ifunc = 0;
+      ifunc < sequence->functionIndices.size() && !clockNameEquals(currentClock, clockTo);
+      ++ifunc)
+  {
+    if (obs->nclock_correction >= MAX_CLK_CORR)
+    {
+      displayMsg(2, "CLK12", "clock correction chain exceeded MAX_CLK_CORR", "", 0);
+      return false;
     }
 
-    return correction;
-}
-#endif
+    ClockCorrectionFunction *func = &g_clockCorrectionFunctions[sequence->functionIndices[ifunc]];
+    ensureFunctionLoaded(func);
 
-    void 
-getClockCorrections(observation *obs, const char *clockFrom_const, 
-        const char *clockTo,int warnings)
-{
-    DynamicArray *sequence;
-    size_t ifunc;
-    char *currClock;
-    ClockCorrectionFunction *func;
-    double correction = 0.0;
-    obs->nclock_correction = 0;
-    char clockFrom[128];
-    strcpy(clockFrom,clockFrom_const);
-
-    char clockFromOrig[128]; 
-      //  logdbg("In getClockCorrections");
-
-    //logdbg("Getting clockFrom >%s<",obs->telID);
-    if (clockFrom[0]=='\0') // get from observatory instead
-        strcpy(clockFrom,getObservatory(obs->telID)->clock_name);
-    //  logdbg("Got clockFrom");
-    strcpy(clockFromOrig,clockFrom);
-
-    if (!strcasecmp(clockTo, clockFrom))
+    if (!clockNameEquals(currentClock, func->clockFrom))
     {
-        obs->nclock_correction = 0;
+      logerr("Broken directed clock correction chain: expected %s, got %s",
+          currentClock.c_str(), func->clockFrom.c_str());
+      return false;
+    }
+
+    const double stepCorrection = TabulatedFunction_getValue(&func->table,
+        (double)obs->sat + *totalCorrection / SECDAY);
+
+    obs->correctionsTT[obs->nclock_correction].correction = stepCorrection;
+    std::snprintf(obs->correctionsTT[obs->nclock_correction].corrects_to,
+        sizeof(obs->correctionsTT[obs->nclock_correction].corrects_to),
+        "%s", func->clockTo.c_str());
+    ++obs->nclock_correction;
+
+    *totalCorrection += stepCorrection;
+    currentClock = func->clockTo;
+  }
+
+  return clockNameEquals(currentClock, clockTo);
+}
+
+static bool accumulateCorrectionFromSequence(const ClockSequence *sequence,
+    observation *obs, const std::string &clockTo,
+    std::string currentClock, double *correction)
+{
+  for (size_t ifunc = 0;
+      ifunc < sequence->functionIndices.size() && !clockNameEquals(currentClock, clockTo);
+      ++ifunc)
+  {
+    ClockCorrectionFunction *func = &g_clockCorrectionFunctions[sequence->functionIndices[ifunc]];
+    ensureFunctionLoaded(func);
+
+    if (!clockNameEquals(currentClock, func->clockFrom))
+    {
+      logerr("Broken directed clock correction chain: expected %s, got %s",
+          currentClock.c_str(), func->clockFrom.c_str());
+      return false;
+    }
+
+    *correction += TabulatedFunction_getValue(&func->table,
+        (double)obs->sat + *correction / SECDAY);
+    currentClock = func->clockTo;
+  }
+
+  return clockNameEquals(currentClock, clockTo);
+}
+
+} // namespace
+
+
+
+
+/* defineClockCorrectionSequence: call to provide the clock correction
+module with a sequence of files to use for corrections. May be called
+multiple times for sequences with different start/end clocks (e.g. for
+multi-observatory fitting). */
+void defineClockCorrectionSequence(char *fileList,int dispWarnings){
+  ensureClockCorrectionsInitialized(dispWarnings);
+
+  std::stringstream ss(fileList == NULL ? "" : fileList);
+  std::string token;
+  std::vector<size_t> indices;
+
+  while (ss >> token)
+  {
+    const int idx = findFunctionIndexFromToken(token);
+    if (idx < 0)
+    {
+      std::printf("Requested clock correction file %s not found!\n", token.c_str());
+      std::exit(1);
+    }
+    indices.push_back((size_t)idx);
+  }
+
+  if (indices.empty())
+  {
+    displayMsg(2, "CLK13", "Empty CLK_CORR_CHAIN definition", "", dispWarnings);
+    std::exit(1);
+  }
+
+  for (size_t i = 1; i < indices.size(); ++i)
+  {
+    const ClockCorrectionFunction &prev = g_clockCorrectionFunctions[indices[i - 1]];
+    const ClockCorrectionFunction &next = g_clockCorrectionFunctions[indices[i]];
+    if (!clockNameEquals(prev.clockTo, next.clockFrom))
+    {
+      std::fprintf(stderr,
+          "Invalid directed clock correction chain: %s (%s -> %s) cannot precede %s (%s -> %s)\n",
+          prev.fileName.c_str(), prev.clockFrom.c_str(), prev.clockTo.c_str(),
+          next.fileName.c_str(), next.clockFrom.c_str(), next.clockTo.c_str());
+      std::exit(1);
+    }
+  }
+
+  const ClockCorrectionFunction &first = g_clockCorrectionFunctions[indices.front()];
+  const ClockCorrectionFunction &last = g_clockCorrectionFunctions[indices.back()];
+  cacheSequence(indices, first.clockFrom, last.clockTo);
+}
+
+/* getClockCorrections : gets the sequence of corrections for a particular
+observation and stores them in obs->clock_corrections.  Uses one
+of the pre-defined sequences (e.g. from defineClockCorrectionSequence) if
+available, otherwise makes one automatically.  */
+void getClockCorrections(observation *obs, const char *clockFrom, const char *clockTo, int warnings){
+  obs->nclock_correction = 0;
+
+  std::string fromClock = (clockFrom == NULL ? "" : clockFrom);
+  std::string targetClock = (clockTo == NULL ? "" : clockTo);
+  if (fromClock.empty())
+    fromClock = getObservatory(obs->telID)->clock_name;
+
+  const std::string originalFrom = fromClock;
+  if (clockNameEquals(fromClock, targetClock))
+    return;
+
+  const ClockSequence *sequence = getClockCorrectionSequenceInternal(fromClock, targetClock,
+      (double)obs->sat, warnings);
+  bool usedApproximation = false;
+
+  if (sequence == NULL)
+  {
+    char msg[1000], msg2[1000];
+    std::sprintf(msg, "Trying assuming UTC =");
+    std::sprintf(msg2, "%s", fromClock.c_str());
+    displayMsg(1, "CLK4", msg, msg2, warnings);
+
+    fromClock = "UTC";
+    if (clockNameEquals(fromClock, targetClock))
+      return;
+
+    sequence = getClockCorrectionSequenceInternal(fromClock, targetClock,
+        (double)obs->sat, warnings);
+    usedApproximation = true;
+    if (sequence == NULL)
+    {
+      std::sprintf(msg, "Trying TT(TAI) instead of ");
+      std::sprintf(msg2, "%s", targetClock.c_str());
+      displayMsg(2, "CLK5", msg, msg2, warnings);
+
+      fromClock = originalFrom;
+      targetClock = "TT(TAI)";
+      if (clockNameEquals(fromClock, targetClock))
         return;
-    }
-    //logdbg("In getClockCorrections calling sequence 1");
-    // Memory leak here
-    sequence = getClockCorrectionSequence(clockFrom, clockTo, obs->sat,warnings);
 
-    if (sequence == NULL)
-    {
-        char msg[1000],msg2[1000];
-        sprintf(msg,"Trying assuming UTC =");
-        sprintf(msg2,"%s",clockFrom);
-        displayMsg(1,"CLK4",msg,msg2,warnings);
-        strcpy(clockFrom,"UTC");
-        if (!strcasecmp(clockTo, clockFrom))
-        {
-            obs->nclock_correction = 0;
-            return;
-        }
-        logdbg("In getClockCorrections calling sequence 2");
-        sequence = getClockCorrectionSequence(clockFrom, clockTo, obs->sat,
-                warnings); 
+      sequence = getClockCorrectionSequenceInternal(fromClock, targetClock,
+          (double)obs->sat, warnings);
+      if (sequence == NULL)
+      {
+        displayMsg(2, "CLK8", "Trying both", "", warnings);
+
+        fromClock = "UTC";
+        if (clockNameEquals(fromClock, targetClock))
+          return;
+
+        sequence = getClockCorrectionSequenceInternal(fromClock, targetClock,
+            (double)obs->sat, warnings);
         if (sequence == NULL)
         {
-            char msg[1000],msg2[1000];
-            sprintf(msg,"Trying TT(TAI) instead of ");
-            sprintf(msg2,"%s",clockTo);
-            displayMsg(1,"CLK5",msg,msg2,warnings);
-            strcpy(clockFrom,clockFromOrig);
-            clockTo="TT(TAI)";
-            if (!strcasecmp(clockTo, clockFrom))
-            {
-                obs->nclock_correction = 0;
-                return;
-            }
-            logdbg("In getClockCorrections calling sequence 3");
-            sequence = getClockCorrectionSequence(clockFrom, clockTo, obs->sat,
-                    warnings); 
-            if (sequence == NULL)
-            {
-                displayMsg(1,"CLK8","Trying both","",warnings);       
-                strcpy(clockFrom,"UTC");
-                if (!strcasecmp(clockTo, clockFrom))
-                {
-                    obs->nclock_correction = 0;
-                    return;
-                }
-                logdbg("In getClockCorrections calling sequence 4");
-                sequence = getClockCorrectionSequence(clockFrom, clockTo, obs->sat,
-                        warnings); 
+          if (warnings == 0)
+          {
+            std::printf("Warning [CLK:7], no directed clock correction available for TOA @ MJD %.4lf!\n",
+                (double)obs->sat);
+          }
+          return;
+        }
+      }
+    }
+  }
 
-                if (sequence==NULL)
-                {
-                    obs->nclock_correction = 0;
-                    if (warnings==0)
-                        printf( "Warning [CLK:7], no clock correction available for TOA @ MJD %.4lf!\n",
-                                (double)obs->sat);
-                    return;
-                }
-            }
-        }
-        displayMsg(1,"CLK9","... ok, using stated approximation","",warnings);       
-    }
-    currClock = clockFrom;
-    // Already bad
-    for (ifunc=0; ifunc < sequence->nelem 
-            && strcasecmp(currClock, clockTo); ifunc++)
-    {
-        func = ((ClockCorrectionFunction **)sequence->data)[ifunc];
-        bool backwards = strcasecmp(currClock, func->clockFrom);
-        if (backwards && strcasecmp(currClock, func->clockTo))
-        {
-            logerr("Broken clock correction chain: %s %s",currClock,func->clockTo);
-            exit(1);
-        }
-        /* add correction using sign based on direction of correction */
-        obs->correctionsTT[obs->nclock_correction].correction = 
-            ClockCorrectionFunction_getCorrection(func, obs->sat+correction/SECDAY)
-            * (backwards ? -1.0 : 1.0);
-        correction += obs->correctionsTT[obs->nclock_correction].correction;
-        strcpy(obs->correctionsTT[obs->nclock_correction].corrects_to, 
-                (backwards ? func->clockFrom : func->clockTo)); 
-        obs->nclock_correction++;
-        currClock = (backwards ? func->clockFrom : func->clockTo);
-    }
-    //  logdbg("leaving getClockCorrections");
-    /*   printf("Correction: %lg\n", correction); */
+  double correction = 0.0;
+  if (!fillCorrectionsFromSequence(obs, sequence, targetClock, fromClock, &correction))
+  {
+    displayMsg(2, "CLK14", "Broken directed clock correction chain", "", warnings);
+    obs->nclock_correction = 0;
+    return;
+  }
+
+  if (usedApproximation)
+  {
+    displayMsg(1, "CLK9", "... ok, using stated approximation", "", warnings);
+  }
 }
 
-    double 
-getCorrectionTT(observation *obs)
-{
-    double correction = 0.0;
-    int ic;
-    for (ic=0; ic < obs->nclock_correction; ic++)
-        correction += obs->correctionsTT[ic].correction;
-    return correction;
+/* getCorrectionTT : convenience function to return the sum of all
+correctionsTT terms in an observation */
+double getCorrectionTT(observation *obs){
+  double correction = 0.0;
+  for (int ic = 0; ic < obs->nclock_correction; ++ic)
+    correction += obs->correctionsTT[ic].correction;
+  return correction;
 }
+/* convenience function to obtain correction to a named clock 
+(for intermediate use e.g. in obtaining Earth orientation parameters;
+does not store steps used in obs->correctionsTT */
+double getCorrection(observation *obs, const char *clockFrom, const char *clockTo, int warnings){
+  observatory *site = NULL;
+  const char *CVS_verNum = "$Id$";
 
-    double
-getCorrection(observation *obs, const char *clockFrom_c, const char *clockTo, int warnings)
-{
-    observatory *site;
-    DynamicArray *sequence;
-    size_t ifunc;
-    ClockCorrectionFunction *func;
-    double correction = 0.0;
-    const char *CVS_verNum = "$Id$";
-    char clockFrom[128];
-    char currClock[128];
-    strcpy(clockFrom,clockFrom_c);
+  std::string fromClock = (clockFrom == NULL ? "" : clockFrom);
+  std::string targetClock = (clockTo == NULL ? "" : clockTo);
+  if (fromClock.empty())
+    site = getObservatory(obs->telID);
 
-    if (clockFrom[0]=='\0')
-        site = getObservatory(obs->telID);
+  if (displayCVSversion == 1)
+    CVSdisplayVersion("clkcorr.C", "getCorrection()", CVS_verNum);
 
-    if (displayCVSversion == 1) CVSdisplayVersion("clkcorr.C","getCorrection()",CVS_verNum);
+  if (fromClock.empty() && site != NULL)
+    fromClock = site->clock_name;
 
-    if (clockFrom[0]=='\0')
-        strcpy(clockFrom,site->clock_name);
-    
+  if (clockNameEquals(fromClock, targetClock))
+    return 0.0;
 
-    strcpy(currClock,clockFrom);
+  std::string currentClock = fromClock;
+  const ClockSequence *sequence = getClockCorrectionSequenceInternal(fromClock,
+      targetClock, (double)obs->sat, warnings);
 
-    if (!strcasecmp(clockTo, clockFrom))
-        return 0.0;
+  if (sequence == NULL)
+  {
+    char msg[1000], msg2[1000];
+    std::sprintf(msg, "Proceeding assuming UTC = ");
+    std::sprintf(msg2, "%s", currentClock.c_str());
+    displayMsg(1, "CLK6", msg, msg2, warnings);
 
-    /*printf("Getting %s<->%s\n", site->clock_name, clockTo);*/ 
-    sequence = getClockCorrectionSequence(clockFrom, clockTo, obs->sat,
-            warnings);
+    if (clockNameEquals(targetClock, "UTC"))
+      return 0.0;
 
+    sequence = getClockCorrectionSequenceInternal("UTC", targetClock,
+        (double)obs->sat, warnings);
+    currentClock = "UTC";
     if (sequence == NULL)
     {
-        char msg[1000],msg2[1000];
-        sprintf(msg,"Proceeding assuming UTC = ");
-        sprintf(msg2,"%s",currClock);
-        displayMsg(1,"CLK6",msg,msg2,warnings);
-
-        if (!strcasecmp(clockTo, "UTC"))
-            return 0.0;
-        sequence = getClockCorrectionSequence("UTC", clockTo, obs->sat,
-                warnings); 
-        strcpy(currClock,"UTC");
-        if (sequence == NULL)
-        {
-            if (warnings==0) 
-                printf( "!Warning [CLK:9], no clock correction available for TOA @ MJD %.4lf!\n",
-                        (double)obs->sat);
-            return 0.0;
-        }
+      if (warnings == 0)
+        std::printf("!Warning [CLK:9], no directed clock correction available for TOA @ MJD %.4lf!\n",
+            (double)obs->sat);
+      return 0.0;
     }
+  }
 
-    for (ifunc=0; ifunc < sequence->nelem
-            && strcasecmp(currClock, clockTo); ifunc++)
-    {
-        func = ((ClockCorrectionFunction **)sequence->data)[ifunc];
-        bool backwards = strcasecmp(currClock, func->clockFrom);
+  double correction = 0.0;
+  if (!accumulateCorrectionFromSequence(sequence, obs, targetClock, currentClock, &correction))
+  {
+    displayMsg(2, "CLK14", "Broken directed clock correction chain", "", warnings);
+    return 0.0;
+  }
 
-        /* add correction using sign based on direction of correction */
-        correction += 
-            ClockCorrectionFunction_getCorrection(func, obs->sat+correction/SECDAY)
-            * (backwards ? -1.0 : 1.0);
-        strcpy(currClock,(backwards ? func->clockFrom : func->clockTo));
-        /*     printf("--> %s\n", currClock); */
-    }
-
-
-    return correction;
+  return correction;
 }

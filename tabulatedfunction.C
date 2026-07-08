@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
+#include <vector>
 #include <TKlog.h>
 
     void
@@ -44,7 +45,7 @@ TabulatedFunction_load(TabulatedFunction *func,
     TabulatedFunctionSample sample;
 // UNUSED VARIABLE //     int narg;
 
-    DynamicArray_init(&func->samples, sizeof(TabulatedFunctionSample));
+    func->samples.clear();
 
     /*   sprintf(fname, "%s/clock2/%s.clk", getenv("TEMPO2"), fileName); */
     f = fopen(fileName, "r");
@@ -84,7 +85,7 @@ TabulatedFunction_load(TabulatedFunction *func,
                     logwarn("Error parsing file %s: Entry %d out of order %lf < %lf",fileName,iline,sample.x,lastx);
                 }
                 lastx=sample.x;
-                DynamicArray_push_back(&func->samples, &sample);
+                func->samples.push_back(sample);
                 iline+=1;
             }
         }
@@ -100,13 +101,21 @@ TabulatedFunction_load(TabulatedFunction *func,
         c++;
     strcpy(func->fileName, c); /* copy after / */
     //  func->fileName[strlen(func->fileName)-4] = '\0';/* wipe off .clk */
+
+    if (func->samples.empty())
+    {
+        fprintf(stderr,
+                "Error parsing file %s: no tabulated samples found.\n",
+                fileName);
+        exit(1);
+    }
 }
 
     double
 TabulatedFunction_getValue(TabulatedFunction *func,
         double x)
 {
-    TabulatedFunctionSample *samp = (TabulatedFunctionSample *)func->samples.data;
+    std::vector<TabulatedFunctionSample> &samp = func->samples;
     size_t isamp;
 
     /* check for out of bounds conditions */
@@ -119,24 +128,24 @@ TabulatedFunction_getValue(TabulatedFunction *func,
         displayMsg(1,"TAB1",msg,msg2,1);
         return samp[0].y;
     }
-    if (samp[func->samples.nelem-1].x  < x)
+    if (samp.back().x  < x)
     {
         char msg[1000],msg2[1000];
         sprintf(msg,"requested value after available data! (%s @",
                 func->fileName);
         sprintf(msg2,"%.1f)",x);
         displayMsg(1,"TAB2",msg,msg2,1);
-        return samp[func->samples.nelem-1].y;
+        return samp.back().y;
     }
 
     /* find first sample to fall before requested time */
 #if 0
     for (isamp = 0; 
-            isamp < func->samples.nelem  && samp[isamp].x <= x; 
+                isamp < samp.size()  && samp[isamp].x <= x; 
             isamp++)
         ;  
 #else  /* binary search code, aka the "The Price Is Right" method */
-    int imin=0, imax=func->samples.nelem-1;
+            int imin=0, imax=(int)samp.size()-1;
     int imid;
     do
     {
@@ -157,10 +166,10 @@ TabulatedFunction_getValue(TabulatedFunction *func,
     double
 TabulatedFunction_getStartX(TabulatedFunction *func)
 {
-    return ((TabulatedFunctionSample *)func->samples.data)[0].x;
+    return func->samples.front().x;
 }
     double
 TabulatedFunction_getEndX(TabulatedFunction *func)
 {
-    return ((TabulatedFunctionSample *)func->samples.data)[func->samples.nelem-1].x;
+    return func->samples.back().x;
 }
