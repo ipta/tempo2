@@ -33,7 +33,6 @@
 #include <stdlib.h>
 #include <math.h>
 #include "tempo2.h"
-#include "dynarr.h"
 
 using namespace std;
 
@@ -46,7 +45,6 @@ void help() /* Display help */
 {
 }
 
-static DynamicArray observatories;
 
 extern "C" int graphicalInterface(int argc,char *argv[],pulsar *psr,int *npsr) 
 {
@@ -152,7 +150,7 @@ extern "C" int graphicalInterface(int argc,char *argv[],pulsar *psr,int *npsr)
   readEphemeris(psr,1,0);/* 2. Read the ephemeris */
 
   // Set up the observatory to centre-of-earth vector
-  DynamicArray_init(&observatories, sizeof(observatory));
+
   newObs.x = telx;
   newObs.y = tely;
   newObs.z = telz;
