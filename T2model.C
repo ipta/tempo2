@@ -142,7 +142,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
 
     //    printf("Number of companions = %d %d\n",com1,com2);
 
-    for (com = com1; com < com2;com++)
+    for (com = com2 - 1; com >= com1; com--)
     {      
         /* Obtain Keplerian parameters */   
         getKeplerian(&psr[p],com,&pb,&t0,&ecc,&omz,&x,&eps1,&eps2,&t0asc,
@@ -461,13 +461,13 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
         torb-=d2bar;                                  /* Equation 42  */
         outer_delay += d2bar;
 
-        if (param==-1 && com == psr[p].nCompanion-1) return torb;
+        if (param==-1 && com == 0) return torb;
         else if (param!=-1 && com==arr)
         {
             // Now we need the partial derivatives. Use DD equations 62a - 62k.
           inner_derivative_dT0 = 0.0;
           int com_inner;
-          for (com_inner = arr + 1; com_inner < psr[p].nCompanion; com_inner++){
+          for (com_inner = 0; com_inner < arr; com_inner++){
             inner_derivative_dT0 +=
               T2model(psr,p,ipos,param_t0,com_inner) / SECDAY;
           }
