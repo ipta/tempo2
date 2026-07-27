@@ -2157,6 +2157,18 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
             }
         }
 
+        else if (strcasecmp(str,"X2DOT")!=0 && (str[0]=='X' || str[0]=='x') &&
+                (str[1]=='2') && (str[2]=='D' || str[2]=='d'))
+        {
+            /* X2DOT_n: per-companion second derivative of A1 (A1DOT2) */
+            int val;
+            if (sscanf(str+6,"%d",&val)==1)
+            {
+                if (val-1<psr->param[param_a2dot].aSize)
+                    readValue(psr,str,fin,&(psr->param[param_a2dot]),val-1);
+            }
+        }
+
         else if ( strcasecmp(str,"X2DOT")==0)
         {
             // Ryan: set this value which is used in THE MSS model plugin

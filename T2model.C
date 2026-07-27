@@ -60,12 +60,12 @@ void getKeplerian(pulsar *psr,int com,double *pb,longdouble *t0,double *ecc,
 void addKeplerianJumps(pulsar *psr,int ipos,double *torb,double *x,double *ecc,
         double *omz,double *pb);
 void getPostKeplerian(pulsar *psr,int com,double an,double *si,double *m2,
-        double *mtot,double *omdot, double *gamma,double *xdot,
+        double *mtot,double *omdot, double *gamma,double *xdot,double *x2dot,
 		      double *xpbdot, double *pbdot, double *pb2dot, double *edot,double *pmra,
         double *pmdec,double *dpara, double *dr,double *dth,
         double *a0,double *b0,double *xomdot,double *afac,
         double *eps1dot,double *eps2dot,double *daop);
-void updateParameters(double edot,double xdot,double eps1dot,double eps2dot,
+void updateParameters(double edot,double xdot,double x2dot,double eps1dot,double eps2dot,
         longdouble tt0,double *ecc,double *x,double *eps1,
         double *eps2);
 void deriveKeplerian(double pb,double kom,double *an,double *sin_omega,
@@ -89,7 +89,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
     double rad2deg = 180.0/M_PI;
     double SUNMASS = 4.925490947e-6;
     longdouble tt0,t0,ct,t0asc;
-    double m2,x,ecc,er,xdot,edot,dr,dth,eth;
+    double m2,x,ecc,er,xdot,x2dot,edot,dr,dth,eth;
     double pbdot,pb2dot,xpbdot,phase,u,gamma;
     double orbits;
     int    norbits;
@@ -152,7 +152,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
         /* Parameters derived from the Keplerian parameters */
         deriveKeplerian(pb,kom,&an,&sin_omega,&cos_omega);
         /* Obtain post-Keplerian parameters */
-        getPostKeplerian(&psr[p],com,an,&si,&m2,&mtot,&omdot,&gamma,&xdot,&xpbdot,
+        getPostKeplerian(&psr[p],com,an,&si,&m2,&mtot,&omdot,&gamma,&xdot,&x2dot,&xpbdot,
 			 &pbdot, &pb2dot,&edot,&pmra,&pmdec,&dpara,&dr,&dth,&a0,&b0,
                 &xomdot,&afac,&eps1dot,&eps2dot,&daop);
 
@@ -192,7 +192,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
         }
         //      logdbg("going to update Parameters");
         /* Update parameters with their time derivatives */
-        updateParameters(edot,xdot,eps1dot,eps2dot,tt0,&ecc,&x,&eps1,&eps2);
+        updateParameters(edot,xdot,x2dot,eps1dot,eps2dot,tt0,&ecc,&x,&eps1,&eps2);
         //      logdbg("updated parameters");
 
         /* Do some checks */
@@ -530,6 +530,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
             else if (param==param_gamma)   return cgamma * fac;
             else if (param==param_m2)      return cm2*SUNMASS * fac;
             else if (param==param_a1dot)   return cx*tt0 * fac;
+            else if (param==param_a2dot)   return 0.5*cx*tt0*tt0 * fac;
             else if (param==param_eps1)    return ceps1 * fac;
             else if (param==param_eps1dot) return ceps1*tt0 * fac;
             else if (param==param_eps2dot) return ceps2*tt0 * fac;
@@ -618,7 +619,7 @@ void updateT2(pulsar *psr,double val,double err,int pos,int arr){
         psr->param[pos].val[arr] += val;
         psr->param[pos].err[arr]  = err;
     }
-    else if (pos==param_a1dot || pos == param_eps1dot || pos==param_eps2dot)
+    else if (pos==param_a1dot || pos==param_a2dot || pos == param_eps1dot || pos==param_eps2dot)
     {
         psr->param[pos].val[arr] += val;
         psr->param[pos].err[arr]  = err;
@@ -773,7 +774,7 @@ void addKeplerianJumps(pulsar *psr,int ipos,double *torb,double *x,double *ecc,
  */
 
 void getPostKeplerian(pulsar *psr,int com,double an,double *si,double *m2,
-        double *mtot,double *omdot, double *gamma,double *xdot,
+        double *mtot,double *omdot, double *gamma,double *xdot,double *x2dot,
 		      double *xpbdot,double *pbdot, double *pb2dot, double *edot,double *pmra,
         double *pmdec,double *dpara, double *dr,double *dth,
         double *a0,double *b0,double *xomdot,double *afac,
@@ -803,6 +804,7 @@ void getPostKeplerian(pulsar *psr,int com,double an,double *si,double *m2,
     *omdot   = getParameter(psr,param_omdot,com)/(rad2deg*365.25*SECDAY*an);
     *gamma   = getParameter(psr,param_gamma,com);
     *xdot    = getParameter(psr,param_a1dot,com);
+    *x2dot   = getParameter(psr,param_a2dot,com);
     *xpbdot  = getParameter(psr,param_xpbdot,com);
     *pbdot   = getParameter(psr,param_pbdot,com);
     *pb2dot  = getParameter(psr,param_pb2dot,com);
@@ -824,11 +826,11 @@ void getPostKeplerian(pulsar *psr,int com,double an,double *si,double *m2,
 }
 
 
-void updateParameters(double edot,double xdot,double eps1dot,double eps2dot,
+void updateParameters(double edot,double xdot,double x2dot,double eps1dot,double eps2dot,
         longdouble tt0,double *ecc,double *x,double *eps1,
         double *eps2){
     (*ecc)  += edot*tt0;
-    (*x)    += xdot*tt0;
+    (*x)    += xdot*tt0 + 0.5*x2dot*tt0*tt0;
     (*eps1) += eps1dot*tt0;
     (*eps2) += eps2dot*tt0;
 }

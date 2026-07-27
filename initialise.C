@@ -546,6 +546,9 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
         sprintf(temp,"XDOT_%d",k+1); strcpy(psr->param[param_a1dot].label[k],temp);
         sprintf(temp,"XDOT_%d",k+1); strcpy(psr->param[param_a1dot].shortlabel[k],temp);
 
+        sprintf(temp,"X2DOT_%d",k+1); strcpy(psr->param[param_a2dot].label[k],temp);
+        sprintf(temp,"X2DOT_%d",k+1); strcpy(psr->param[param_a2dot].shortlabel[k],temp);
+
         sprintf(temp,"PBDOT_%d",k+1); strcpy(psr->param[param_pbdot].label[k],temp);
         sprintf(temp,"PBDOT_%d",k+1); strcpy(psr->param[param_pbdot].shortlabel[k],temp);
 
@@ -777,7 +780,7 @@ void allocateMemory(pulsar *psr, int realloc)
         if (i==param_dm)      psr->param[i].aSize = MAX_DM_DERIVATIVES;
 	else if (i==param_cm)  psr->param[i].aSize = MAX_DM_DERIVATIVES;
         else if (i==param_f)  psr->param[i].aSize = MAX_FREQ_DERIVATIVES;
-        else if (i==param_pb || i==param_ecc || i==param_om || i==param_t0 || i==param_a1 || i==param_a1dot || i==param_pbdot)
+        else if (i==param_pb || i==param_ecc || i==param_om || i==param_t0 || i==param_a1 || i==param_a1dot || i==param_a2dot || i==param_pbdot)
             psr->param[i].aSize = MAX_COMPANIONS;
         else if (i==param_fb)
             psr->param[i].aSize = 20;
