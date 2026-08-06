@@ -34,17 +34,19 @@
 #include <string.h>
 #include <dlfcn.h>
 
+#define MAX_FITSET 100
+
 void readWhiteNoiseModelFile(pulsar *psr,int p);
 
 void preProcess(pulsar *psr,int npsr,int argc,char **argv)
 {
     int p,i,k,fitN=0,setN=0,j;
-    char fitStr[10][100];
-    char setStr[10][100];
+    char fitStr[MAX_FITSET][100];
+    char setStr[MAX_FITSET][100];
     float dmvals[10000];
     float startdmmjd = 0;
     int ndm;
-    longdouble setVal[10];
+    longdouble setVal[MAX_FITSET];
     FILE *fdmin;
     char newEpoch[100]="NONE";
     char selectFname[1000]="";
@@ -110,10 +112,21 @@ void preProcess(pulsar *psr,int npsr,int argc,char **argv)
             setName=1;
             strcpy(name,argv[i+1]);
         }
-        else if (strcmp(argv[i],"-fit")==0)
+        else if (strcmp(argv[i],"-fit")==0){
+            if (fitN>=MAX_FITSET)
+            {
+                printf("Too many -fit options! Maximum is %d\n", MAX_FITSET);
+                exit(1);
+            }
             strcpy(fitStr[fitN++],argv[i+1]);
+        }
         else if (strcmp(argv[i],"-set")==0)
         {
+            if (setN>=MAX_FITSET)
+            {
+                printf("Too many -set options! Maximum is %d\n", MAX_FITSET);
+                exit(1);
+            }
             strcpy(setStr[setN],argv[i+1]);
             //sscanf(argv[i+2],"%Lf",&setVal[setN]);
             setVal[setN] = parse_longdouble(argv[i+2]);

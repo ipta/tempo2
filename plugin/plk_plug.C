@@ -687,6 +687,8 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
     char flagStrX[1024]="NULL";
     char flagStrY[1024]="NULL";
 
+    double jump_turns = 3.0;
+
     for (i=0;i<100;i++)
         flagCol[i]= 1;
 
@@ -1909,7 +1911,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     printf("Running: %s\n",str);
                     system(str);
                 }
-                else if (key=='j') /* Draw line between points */
+                else if (plk_mode != 1 && key=='j') /* Draw line between points */
                     join*=-1;
                 else if (plk_mode != 1 && key=='J') /* Toggle plotting points */
                     plotPoints*=-1;
@@ -1997,10 +1999,21 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     printf("FlagID = ");  scanf("%s",highlightID[highlightNum]);
                     printf("FlagVal = "); scanf("%s",highlightVal[highlightNum++]);
                     getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
+                } else if (plk_mode == 1 && key == 'j') { 
+                    // set custom jump turns for pulse number adjustment mode
+                    double requested_jump_turns = jump_turns;
+                    printf("Enter number of turns to jump for J key (e.g. 3 for 1/3 of a turn): ");
+                    if (scanf("%lf",&requested_jump_turns) == 1 && requested_jump_turns > 0.0) {
+                        jump_turns = requested_jump_turns;
+                    } else {
+                        printf("Invalid value, keeping previous jump setting (%lg turns).\n", jump_turns);
+                    }
+                    getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
+                    printf("In J mode, will add %lg turns\n",1.0/jump_turns);
                 } else if (plk_mode == 1 && (key=='H' || key=='J')) {
                     // In pulse number adjustment mode, we use H to add half a turn to selected points.
                     double phaseadd = 0.5;
-                    if (key=='J') phaseadd = 1/3.0; // Add a third of a turn instead of half a turn if in J mode.
+                    if (key=='J') phaseadd = 1.0/jump_turns; // Add a custom fraction of a turn instead of half a turn if in J mode.
                     printf("key = %c adding phase %lg via -padd flag\n", key, phaseadd);
 
                     cpgband(2,0,mouseX,mouseY,&mouseX2,&mouseY2,&key);
@@ -2041,15 +2054,21 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     }
                     formResiduals(psr,npsr,1);
                 }
-                else if (plk_mode == 1 && (key=='-' || key=='+' || key=='_' || key=='=')) {
+                else if (plk_mode == 1 && (key=='-' || key=='+' || key=='_' || key=='=' || key == '0')) {
                     // This is pulse number adjusting mode
                     int i= idPoint(psr,x,y,id,count,mouseX,mouseY); /* Identify closest point */
                     int dpn=-1;
                     if (key == '-' || key== '_' ){
                         dpn=1;
                     }
+                    if (key == '0') {
+                        double phase_turns = psr[0].obsn[i].residual*psr[0].param[param_f].val[0];
+                        int nearest_turns = (phase_turns >= 0.0) ? (int)floor(phase_turns + 0.5)
+                                                               : (int)ceil(phase_turns - 0.5);
+                        dpn = nearest_turns;
+                    }
 
-                    if (key == '-' || key == '=' ) { // just this ToA
+                    if (key == '-' || key == '=' || key == '0') { // just this ToA
                         psr[0].obsn[i].pulseN += dpn;
                         update_pulse_number_flag(psr,i);
                     } else {
@@ -3909,7 +3928,7 @@ void drawMenu3(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,
         drawAxisSel(0,0.10,"DM Var",xplot==17,yplot==17);
     }
     if(psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx !=0 ){
-        drawAxisSel(0,0.06,"Chrom. Noise",xplot==19,yplot==19);
+        drawAxisSel(0,0.04,"Chrom. Noise",xplot==19,yplot==19);
     }
     
 
@@ -4733,10 +4752,22 @@ int setPlot(float *x,int count,pulsar *psr,int iobs,double unitFlag,int plotPhas
     }
     else if (plot==19)
       {
-	double freq=(double) psr[0].obsn[iobs].freqSSB;
-	//fprintf(stderr, "%.3e\n", psr[0].obsn[iobs].TNChromErr*powf(freq/1e9,2));
-	double index=psr[0].TNChromIdx;
-	x[count]=(float)psr[0].obsn[iobs].TNChromSignal*powf(freq/1.4e9,index);
+        double freq=(double) psr[0].obsn[iobs].freqSSB;
+        longdouble yrs = (psr[0].obsn[iobs].sat - psr[0].param[param_dmepoch].val[0])/365.25;
+        longdouble arg = 1.0;
+        double cmDot=0;
+        double cmDotErr=0;
+        double series_fac=1.0;
+        for (int d=1;d<9;d++){
+            arg *= yrs;
+            if (psr[0].dm_series_type == series_taylor_pn) {
+                series_fac *= d;
+            }
+            if (psr[0].param[param_cm].paramSet[d]==1){
+                cmDot+=(double)(psr[0].param[param_cm].val[d]*arg/series_fac);
+            }
+        }	double index=psr[0].TNChromIdx;
+	    x[count]=(float)psr[0].obsn[iobs].TNChromSignal*powf(freq/1.4e9,index) + cmDot;
       }
 
 
