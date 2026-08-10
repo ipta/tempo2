@@ -382,6 +382,7 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                     }
             } else if (strncasecmp(str,"FDJUMPLOG",9)==0) {
                 logdbg("Interpret as an FDJUMPLOG parameter");
+                psr->fdjump_pint_format = 1; // FDxJUMP (PINT) format
                 char rest[1024];
                 char scale[80];
                 fgets(rest, 1024, fin);
@@ -389,7 +390,6 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 if (strncasecmp(scale, "N",10)==0) {
                     psr->fdjump_log=0; // not log scale
                     logdbg("FDJUMP SCALE is LINEAR");
-                    psr->fdjump_pint_format = 1; // FDxJUMP (PINT) format
                 } else {
                     psr->fdjump_log=1; // log scale
                     logdbg("FDJUMP SCALE is LOG");
