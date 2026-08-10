@@ -2231,7 +2231,7 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         }else if( strcasecmp( str, "STIG" ) == 0 ){
             // Stigma Shapiro delay harmonic ratio for DDH model (FW10)
             readValue( psr, str, fin, &( psr->param[param_stig] ), 0 );
-        }else if( strcasecmp( str, "NHARM" ) == 0 ){
+        }else if( (strcasecmp( str, "NHARM" ) == 0 ) || (strcasecmp( str, "NHARMS" ) == 0 ) ){
             // Number of Shapiro delay harmonics to be used for DDH model (FW10)
             readValue( psr, str, fin, &( psr->param[param_nharm] ), 0 );
         }
