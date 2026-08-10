@@ -41,6 +41,7 @@ void getValue(char *str,int v1,int v2,pulsar *psr,int l,int arr);
 void removeCR(char *str);
 void checkLine(pulsar *p,char *str,FILE *fin,parameter *elong,parameter *elat);
 void checkAllSet(pulsar *psr,parameter elong,parameter elat,char *filename);
+static void checkBinaryParameterConsistency(pulsar *psr);
 
 /* Function to set up default parameters before reading a .par file */
 int setupParameterFileDefaults(pulsar *psr)
@@ -151,6 +152,7 @@ void readParfileGlobal(pulsar *psr,int npsr,char tpar[MAX_STRLEN][MAX_FILELEN],
                 checkLine(psr+p,str,fin,&elong,&elat);
         }
         fclose(fin);
+        checkBinaryParameterConsistency(psr+p);
     }
 }
 
@@ -2297,6 +2299,38 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         }
 }
 
+static void checkBinaryParameterConsistency(pulsar *psr)
+{
+    int anyFB = 0;
+    for (int j=0;j<psr->param[param_fb].aSize;j++)
+    {
+        if (psr->param[param_fb].paramSet[j]==1)
+        {
+            anyFB = 1;
+            break;
+        }
+    }
+
+    if (strcasecmp(psr->binaryModel,"DDGR")==0 && anyFB==1)
+    {
+        logerr("BINARY DDGR does not support FB parameters; "
+               "use PB/PBDOT or select a binary model that evaluates FBn.");
+        exit(1);
+    }
+
+    if (strcasecmp(psr->binaryModel,"ELL1")==0 &&
+            psr->param[param_fb].paramSet[1]==1 &&
+            psr->param[param_pbdot].paramSet[0]==1)
+    {
+        displayMsg(1,"BINFB1",
+                "Both PBDOT and FB1 are set for ELL1; explicit FB1 takes "
+                "precedence and PBDOT is disabled.",
+                "",psr->noWarnings);
+        psr->param[param_pbdot].paramSet[0] = 0;
+        psr->param[param_pbdot].fitFlag[0] = 0;
+    }
+}
+
 void checkAllSet(pulsar *psr,parameter elong,parameter elat,char *filename)
 {
     /* Check if we have read a position epoch */
@@ -2412,6 +2446,7 @@ void checkAllSet(pulsar *psr,parameter elong,parameter elat,char *filename)
             printf("-> Using %s instead.(You should set CLK to what you really mean!)\n", clk);
         strcpy(psr->clock, clk);
     }
+    checkBinaryParameterConsistency(psr);
 }
 
 /* ******************************************** */
