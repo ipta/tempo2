@@ -1453,6 +1453,7 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                     else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || strcasecmp(str1,"SCALED")==0 || str1[0]=='-')
                         fprintf(fout2,"JUMP %s %s %.14g %d\n",str1,str2,psr[p].jumpVal[i],psr[p].fitJump[i]);
                 }	
+                int fdjump_format_pint = psr[p].fdjump_pint_format;
                 for (i=1;i<=psr[p].nfdJumps;i++)
                 {
                     sscanf(psr[p].fdjumpStr[i],"%s %s %s %s %s",str1,str2,str3,str4,str5);
@@ -1461,19 +1462,33 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
                             fprintf(fout2,"FDJUMPDM %s %s %s %.14g %d\n",str1,str2,str3,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
                         else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
                             fprintf(fout2,"FDJUMPDM %s %s %.14g %d\n",str1,str2,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
-
                     } else { // a regular FD jump
+                        char fdjump_kw[32];
+                        if (fdjump_format_pint)
+                            snprintf(fdjump_kw, sizeof(fdjump_kw), "FD%dJUMP", psr[p].fdjumpIdx[i]);
+                        else
+                            snprintf(fdjump_kw, sizeof(fdjump_kw), "FDJUMP%d", psr[p].fdjumpIdx[i]);
                         if (strcasecmp(str1,"FREQ")==0 || strcasecmp(str1,"MJD")==0)
-                            fprintf(fout2,"FDJUMP%d %s %s %s %.14g %d\n",psr[p].fdjumpIdx[i],str1,str2,str3,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
+                            fprintf(fout2,"%s %s %s %s %.14g %d\n",fdjump_kw,str1,str2,str3,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
                         else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
-                            fprintf(fout2,"FDJUMP%d %s %s %.14g %d\n",psr[p].fdjumpIdx[i],str1,str2,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
+                            fprintf(fout2,"%s %s %s %.14g %d\n",fdjump_kw,str1,str2,psr[p].fdjumpVal[i],psr[p].fitfdJump[i]);
                     }
-                                    }	  
+                }
+            
+
                 if (psr[p].nfdJumps > 0) {
-                    if (psr[p].fdjump_log){
-                        fprintf(fout2,"FDJUMP_SCALE LOG\n");
+                    if (psr[p].fdjump_pint_format) {
+                        if (psr[p].fdjump_log){
+                            fprintf(fout2,"FDJUMPLOG Y\n");
+                        } else {
+                            fprintf(fout2,"FDJUMPLOG N\n");
+                        }                    
                     } else {
-                        fprintf(fout2,"FDJUMP_SCALE LINEAR\n");
+                        if (psr[p].fdjump_log){
+                            fprintf(fout2,"FDJUMP_SCALE LOG\n");
+                        } else {
+                            fprintf(fout2,"FDJUMP_SCALE LINEAR\n");
+                        }
                     }
                 }
 

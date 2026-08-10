@@ -51,8 +51,8 @@
 
 
 #define TEMPO2_h_HASH "$Id$"
-#define TEMPO2_h_VER "2026.04.1"
-#define TEMPO2_h_MAJOR_VER 2026.04
+#define TEMPO2_h_VER "2026.08.1"
+#define TEMPO2_h_MAJOR_VER 2026.08
 #define TEMPO2_h_MINOR_VER 1
 #define TSUN longdouble(4.925490947e-6) /*!< Solar constant for mass calculations. */
 #define MAX_FREQ_DERIVATIVES 13    /*!< F0 -> Fn   where n=10                            */
@@ -623,14 +623,14 @@ typedef struct pulsar {
 
     // new parameters for fdjumps
     int    nfdJumps;                  /*!< Number of jumps                                        */
-    char ffdjumpID[16];
+    char   fdjump_pint_format;        /*!< = 1 if par file used PINT FDxJUMP format, 0 for FDJUMPx */
     double fdjumpVal[MAX_JUMPS];      /*!< Value of jump                                              */
     int    fdjumpIdx[MAX_JUMPS];
     //char   jumpSAT[MAX_JUMPS];      /*!< This jump is in SAT rather than phase */
     int    fitfdJump[MAX_JUMPS];      /*!< = 1 if fit for jump                                        */
     double fdjumpValErr[MAX_JUMPS];   /*!< Error on jump                                              */
     char   fdjumpStr[MAX_JUMPS][MAX_STRLEN]; /*!< String describing jump                              */
-    char fdjump_log;                /* Is the fdjumps log scale */
+    char   fdjump_log;                /* Is the fdjumps log scale */
     
     
     
