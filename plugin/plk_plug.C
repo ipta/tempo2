@@ -115,6 +115,75 @@ int    FITWAVES_harmonicStep;
 double FITWAVES_par[1000];
 char flagStore[100][100];
 
+/*
+ * Axis-selector button geometry is centralized below so drawMenu3() and
+ * checkMenu3() cannot drift apart. If you need to move buttons, change their
+ * spacing, or add a new selector entry, update plk_axis_selector_buttons and
+ * the PLK_AXIS_SELECTOR_* / PLK_MENU3_VIEWPORT_* constants here rather than
+ * editing drawMenu3() or checkMenu3() directly.
+ */
+struct PlkAxisSelectorButton {
+    float y_top;
+    int plot;
+    const char *label;
+};
+static const float PLK_MENU3_VIEWPORT_X_MAX = 0.3f;
+static const float PLK_MENU3_VIEWPORT_Y_MIN = 0.3f;
+static const float PLK_MENU3_VIEWPORT_Y_SPAN = 0.5f;
+static const float PLK_AXIS_SELECTOR_X_COLUMN_MIN = 0.50f;
+static const float PLK_AXIS_SELECTOR_X_COLUMN_MAX = 0.55f;
+static const float PLK_AXIS_SELECTOR_Y_COLUMN_MIN = 0.60f;
+static const float PLK_AXIS_SELECTOR_Y_COLUMN_MAX = 0.65f;
+static const float PLK_AXIS_SELECTOR_BUTTON_HEIGHT = 0.04f;
+static const PlkAxisSelectorButton plk_axis_selector_buttons[] = {
+    {0.990f, 1, "pre-fit"},
+    {0.935f, 2, "post-fit"},
+    {0.880f, 3, "date"},
+    {0.825f, 4, "orbital phase"},
+    {0.770f, 5, "serial"},
+    {0.715f, 6, "day of year"},
+    {0.660f, 7, "frequency"},
+    {0.605f, 8, "TOA error"},
+    {0.550f, 10, "year"},
+    {0.495f, 11, "elevation"},
+    {0.440f, 12, "rounded MJD"},
+    {0.385f, 13, "sidereal time"},
+    {0.330f, 14, "hour angle"},
+    {0.275f, 15, "para. angle"},
+    {0.220f, 16, "Red Noise"},
+    {0.165f, 17, "DM Var"},
+    {0.110f, 20, "SWGP"},
+    {0.055f, 19, "Chrom. Noise"}
+};
+static bool plkAxisSelectorEnabled(const pulsar *psr, int plot)
+{
+    switch (plot) {
+        case 16:
+            return psr[0].TNRedAmp != 0 && psr[0].TNRedGam != 0;
+        case 17:
+            return psr[0].TNDMAmp != 0 && psr[0].TNDMGam != 0;
+        case 19:
+            return psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx != 0;
+        case 20:
+            return psr[0].SWGPAmp != 0 && psr[0].SWGPGam != 0;
+        default:
+            return true;
+    }
+}
+static int plkAxisSelectorHitPlot(const pulsar *psr, float menu_x, float menu_y)
+{
+    if (menu_x < PLK_AXIS_SELECTOR_X_COLUMN_MIN || menu_x > PLK_AXIS_SELECTOR_Y_COLUMN_MAX)
+        return -1;
+    for (unsigned idx = 0; idx < sizeof(plk_axis_selector_buttons)/sizeof(plk_axis_selector_buttons[0]); ++idx) {
+        const PlkAxisSelectorButton &button = plk_axis_selector_buttons[idx];
+        if (!plkAxisSelectorEnabled(psr, button.plot))
+            continue;
+        if (menu_y <= button.y_top && menu_y >= button.y_top - PLK_AXIS_SELECTOR_BUTTON_HEIGHT)
+            return button.plot;
+    }
+    return -1;
+}
+
 void help(int plk_mode) /* Display help */
 {
     printf("\nFitting and Calculating Options\n"); /* Playing around with individual TOA's and global TOA trends */
@@ -1053,13 +1122,18 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 
 		}
 
-		if (yplot==19)
+        if (yplot==19)
 		  {
 		    double freq=psr[0].obsn[i].freqSSB;
 		    double index=psr[0].TNChromIdx;
 		    errBar[count] = psr[0].obsn[i].TNChromErr*powf(freq/1.4e9,index)*unitFlag/1e-6;
 		    //fprintf(stderr, "%.3e\n", errBar[count]);
                   }
+
+        if (yplot==20)
+          {
+            errBar[count] = (float) psr[0].obsn[i].SWGPErr/1e-6;
+          }
 
                 if (bad==0) count++;	    
             }
@@ -1197,7 +1271,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 
             if (yplot==2)
 	      {
-		if ((psr[0].TNsubtractDM==1) || (psr[0].TNsubtractRed ==1)|| (psr[0].TNsubtractChrom ==1))
+        if ((psr[0].TNsubtractDM==1) || (psr[0].TNsubtractRed ==1)|| (psr[0].TNsubtractChrom ==1) || (psr[0].TNsubtractSWGP ==1))
 		  {
 		    sprintf(title,"%s (%s = %.3f \\gms) %s",psr[0].name,rmsStr,psr[0].rmstn,fitType);
 		  }
@@ -1349,7 +1423,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 //if (plotPoints==1)
                 //  {
                 cpgpt(ncount,x2,y2,freqStyle[j]);
-                if (plotErr==1 && (yplot==1 || yplot==2 || yplot==16 || yplot==17 || yplot ==19 )) cpgerry(ncount,x2,yerr1_2,yerr2_2,1);
+                if (plotErr==1 && (yplot==1 || yplot==2 || yplot==16 || yplot==17 || yplot ==19 || yplot ==20 )) cpgerry(ncount,x2,yerr1_2,yerr2_2,1);
                 if (plotErr==2 && (yplot==1 || yplot==2)) cpgerry(ncount,x2,yerr1_2,yerr2_2,0);
                 //  }
                 if (join==1)
@@ -1609,16 +1683,18 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
             }
             else if(key=='F'){
                 if(psr[0].TNsubtractDM==0){
-                    printf("will substract PL DM/Chrom Variations on next Fit \n");
+                    printf("will substract PL DM/Chrom/SW Variations\n");
                     psr[0].TNsubtractDM=1;
                     psr[0].TNsubtractChrom=1;
+                    psr[0].TNsubtractSWGP=1;
 		    formResiduals(psr,npsr,1);
 		     textOutput(psr,npsr,0,0,0,0,"");
 		}
                 else if(psr[0].TNsubtractDM==1){
-                    printf("will Re-add PL DM/Chrom Variations on next Fit \n");
+                    printf("will Re-add PL DM/Chrom/SW Variations\n");
                     psr[0].TNsubtractDM=0;
                     psr[0].TNsubtractChrom=0;
+                    psr[0].TNsubtractSWGP=0;
 		    formResiduals(psr,npsr,1);
 		     textOutput(psr,npsr,0,0,0,0,"");
 		}
@@ -3554,53 +3630,30 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
 
     x7 = (mx-x3)*xscale+x1; 
     y7 = (my-y3)*yscale+y1; 
-    mouseX = (int)((x7/(x6-x5)/0.3-0.5)/0.1);
-    mouseY = (int)(((1-(y7/(y6-y5)))-0.2)*2.0/0.6*10.0); // 0.2 because the top menu bar has height of 0.2
-    //  printf("MENU3 mouseX = %d, mouseY = %d [%g]\n",mouseX,mouseY,((1-(y7/(y6-y5)))-0.2)*2.0/0.6*10.0);
-    if (mouseX==0)
     {
-        if (mouseY==0) *xplot=1;
-        else if (mouseY==1)  *xplot=2;
-        else if (mouseY==2)  *xplot=3;
-        else if (mouseY==3)  *xplot=4;
-        else if (mouseY==4)  *xplot=5;
-        else if (mouseY==5)  *xplot=6;
-        else if (mouseY==6)  *xplot=7;
-        else if (mouseY==7)  *xplot=8;
-        else if (mouseY==8)  *xplot=10;
-        else if (mouseY==9)  *xplot=11;
-        else if (mouseY==10) *xplot=12;
-        else if (mouseY==11) *xplot=13;
-        else if (mouseY==12) *xplot=14;
-        else if (mouseY==13) *xplot=15;
-        else if (mouseY==14) *xplot=16;
-        else if (mouseY==15) *xplot=17;
-	else if (mouseY==16) *xplot=19;
-    }
-    else if (mouseX==1)
-    {
-        if (mouseY==0) *yplot=1;
-        else if (mouseY==1)  *yplot=2;
-        else if (mouseY==2)  *yplot=3;
-        else if (mouseY==3)  *yplot=4;
-        else if (mouseY==4)  *yplot=5;
-        else if (mouseY==5)  *yplot=6;
-        else if (mouseY==6)  *yplot=7;
-        else if (mouseY==7)  *yplot=8;
-        else if (mouseY==8)  *yplot=10;
-        else if (mouseY==9)  *yplot=11;
-        else if (mouseY==10) *yplot=12;
-        else if (mouseY==11) *yplot=13;
-        else if (mouseY==12) *yplot=14;
-        else if (mouseY==13) *yplot=15;
-        else if (mouseY==14 &&  psr[0].TNRedAmp != 0 && psr[0].TNRedGam != 0) *yplot=16;
-        else if (mouseY==15 && psr[0].TNDMAmp != 0 && psr[0].TNDMGam != 0) *yplot=17;
-	else if (mouseY==16 && psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx !=0) *yplot=19;
+        const float xfrac = (x7-x5)/(x6-x5);
+        const float yfrac = (y7-y5)/(y6-y5);
+        const float menu_x = xfrac / PLK_MENU3_VIEWPORT_X_MAX;
+        const float menu_y = (yfrac - PLK_MENU3_VIEWPORT_Y_MIN) / PLK_MENU3_VIEWPORT_Y_SPAN;
+        int axis_col = -1;
+        int axis_plot = -1;
+        if (menu_x >= PLK_AXIS_SELECTOR_X_COLUMN_MIN && menu_x <= PLK_AXIS_SELECTOR_X_COLUMN_MAX) axis_col = 0;
+        else if (menu_x >= PLK_AXIS_SELECTOR_Y_COLUMN_MIN && menu_x <= PLK_AXIS_SELECTOR_Y_COLUMN_MAX) axis_col = 1;
+        if (axis_col != -1)
+            axis_plot = plkAxisSelectorHitPlot(psr, menu_x, menu_y);
+
+        logdbg("checkMenu3 axis click: mx=%g my=%g x7=%g y7=%g xfrac=%g yfrac=%g menu_x=%g menu_y=%g axis_col=%d axis_plot=%d",
+               mx, my, x7, y7, xfrac, yfrac, menu_x, menu_y, axis_col, axis_plot);
+
+        if (axis_col == 0 && axis_plot != -1)
+            *xplot = axis_plot;
+        else if (axis_col == 1 && axis_plot != -1)
+            *yplot = axis_plot;
     }
 
     // Now check the bottom menu
-    mouseX = (int)(x7/(x6-x5)*10.0);
-    mouseY = (int)(((1-(y7/(y6-y5)))-0.8)/0.2*5); // 0.2 because the top menu bar has height of 0.2
+    mouseX = (int)(((x7-x5)/(x6-x5))*10.0);
+    mouseY = (int)(((1-((y7-y5)/(y6-y5)))-0.8)/0.2*5); // 0.2 because the top menu bar has height of 0.2
     //  printf("MENU3 mouseX = %d, mouseY = %d [%g]\n",mouseX,mouseY,((1-(y7/(y6-y5)))-0.2)*2.0/0.6*10.0);
     if (mouseX==0 && mouseY==0)
     {
@@ -3907,28 +3960,11 @@ void drawMenu3(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,
     cpgsci(1);
     cpgtext(0.5,1.03,"x");
     cpgtext(0.6,1.03,"y");
-    drawAxisSel(0,1.0,"pre-fit",xplot==1,yplot==1);
-    drawAxisSel(0,0.94,"post-fit",xplot==2,yplot==2);
-    drawAxisSel(0,0.88,"date",xplot==3,yplot==3);
-    drawAxisSel(0,0.82,"orbital phase",xplot==4,yplot==4);
-    drawAxisSel(0,0.76,"serial",xplot==5,yplot==5);
-    drawAxisSel(0,0.70,"day of year",xplot==6,yplot==6);
-    drawAxisSel(0,0.64,"frequency",xplot==7,yplot==7);
-    drawAxisSel(0,0.58,"TOA error",xplot==8,yplot==8);
-    drawAxisSel(0,0.52,"year",xplot==10,yplot==10);
-    drawAxisSel(0,0.46,"elevation",xplot==11,yplot==11);
-    drawAxisSel(0,0.40,"rounded MJD",xplot==12,yplot==12);
-    drawAxisSel(0,0.34,"sidereal time",xplot==13,yplot==13);
-    drawAxisSel(0,0.28,"hour angle",xplot==14,yplot==14);
-    drawAxisSel(0,0.22,"para. angle",xplot==15,yplot==15);
-    if(psr[0].TNRedAmp != 0 && psr[0].TNRedGam != 0){
-        drawAxisSel(0,0.16,"Red Noise",xplot==16,yplot==16);
-    }
-    if(psr[0].TNDMAmp != 0 && psr[0].TNDMGam != 0){
-        drawAxisSel(0,0.10,"DM Var",xplot==17,yplot==17);
-    }
-    if(psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx !=0 ){
-        drawAxisSel(0,0.04,"Chrom. Noise",xplot==19,yplot==19);
+    for (unsigned idx = 0; idx < sizeof(plk_axis_selector_buttons)/sizeof(plk_axis_selector_buttons[0]); ++idx) {
+        const PlkAxisSelectorButton &button = plk_axis_selector_buttons[idx];
+        if (!plkAxisSelectorEnabled(psr, button.plot))
+            continue;
+        drawAxisSel(0, button.y_top, button.label, xplot==button.plot, yplot==button.plot);
     }
     
 
@@ -4487,7 +4523,7 @@ int setPlot(float *x,int count,pulsar *psr,int iobs,double unitFlag,int plotPhas
             if(psr[0].AverageResiduals == 1){x[count] = (float)(psr[0].obsn[iobs].averageres/unitFlag);}
             else if (psr[0].AverageDMResiduals ==1){x[count] = (float)(psr[0].obsn[iobs].averagedmres);}
 	    else if (psr[0].TNsubtractRed ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
-	    else if  (psr[0].TNsubtractDM ==1 || psr[0].TNsubtractChrom ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
+        else if  (psr[0].TNsubtractDM ==1 || psr[0].TNsubtractChrom ==1 || psr[0].TNsubtractSWGP ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
 
         }
         else
@@ -4769,6 +4805,10 @@ int setPlot(float *x,int count,pulsar *psr,int iobs,double unitFlag,int plotPhas
         }	double index=psr[0].TNChromIdx;
 	    x[count]=(float)psr[0].obsn[iobs].TNChromSignal*powf(freq/1.4e9,index) + cmDot;
       }
+    else if (plot==20)
+    {
+        x[count]=(float)psr[0].obsn[iobs].SWGPSignal;
+    }
 
 
     else if (plot==18) // Plot on flag value
@@ -4839,6 +4879,7 @@ void setLabel(char *str,int plot,int plotPhase,double unitFlag,longdouble centre
     else if (plot==16) sprintf(str,"Red Noise (sec)");
     else if (plot==17) sprintf(str,"DM Variations (cm^-3 pc)");
     else if (plot==19) sprintf(str, "Chromatic noise at 1 GHz (sec)");
+    else if (plot==20) sprintf(str, "SWGP (sec)");
     else if (plot==18) sprintf(str,"%s",flagStr);
 }
 

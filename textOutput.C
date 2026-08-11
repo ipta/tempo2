@@ -1630,6 +1630,11 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
 
                 }
 
+                if (psr[p].TNsubtractSWGP == 1){
+                    fprintf(fout2,"TNsubtractSWGP 1\n");
+
+                }
+
 
                 if (psr[p].TNsubtractChrom == 1){
                     fprintf(fout2,"TNsubtractChrom 1\n");

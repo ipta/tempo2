@@ -208,6 +208,9 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
     psr->TNDMAmp = 0;
     psr->TNDMGam = 0;
     psr->TNDMC = 0;
+    psr->SWGPAmp = 0;
+    psr->SWGPGam = 0;
+    psr->SWGPC = 0;
     psr->TNDM_log_freqs = 0;
     psr->TNDM_log_factor = 2.0;
     psr->TNChromAmp = 0;
@@ -224,6 +227,7 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
     psr->TNsubtractDM=0;
     psr->TNsubtractRed=0;
     psr->TNsubtractChrom=0;
+    psr->TNsubtractSWGP=0;
     psr->TNsubtractPoly=t2EncodeTNsubtractPoly(1,2,2,2); // Default to postfit quadratic subtraction for red, DM, and chromatic noise
     psr->TN_QpRatio=0;
     psr->TN_QpPeriod=0;

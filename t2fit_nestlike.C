@@ -302,6 +302,60 @@ double t2FitFunc_nestlike_red_chrom(pulsar *psr, int ipsr ,double x ,int ipos ,p
     return prefac * trig / pow((double)psr[ipsr].obsn[ipos].freqSSB / 1.4e9, index);
 }
 
+double t2FitFunc_nestlike_swgp(pulsar *psr, int ipsr ,double x ,int ipos ,param_label label,int k) {
+    double maxtspan = psr[ipsr].param[param_finish].val[0] - psr[ipsr].param[param_start].val[0];
+    double freq = ((double)(k+1.0))/(maxtspan);
+
+    bool is_cos;
+    switch (label) {
+        case param_swgp_cos: is_cos = true;  break;
+        case param_swgp_sin: is_cos = false; break;
+        default: assert(0); return 0.0;
+    }
+
+    /*
+     * Enterprise constructs the Hazboun et al. solar-wind GP basis as a
+     * standard Fourier design matrix multiplied by dt_DM evaluated for a unit
+     * solar-wind amplitude. Tempo2 already precomputes that per-TOA geometric
+     * and chromatic prefactor as spherical_solar_wind, so the SWGP column is
+     * simply the harmonic sinusoid multiplied by that stored factor.
+     *
+     * This first implementation is harmonic-only, so we deliberately do not
+     * apply TNsubtractPoly here.
+     */
+    double trig = is_cos ? cos(2.0*M_PI*freq*x) : sin(2.0*M_PI*freq*x);
+    double basis = trig * psr[ipsr].obsn[ipos].spherical_solar_wind;
+    // logmsg("t2FitFunc_nestlike_swgp: ipsr=%d, ipos=%d, x=%lg, label=%s, k=%d, freq=%.6e, trig=%.6e, spherical_solar_wind=%.6e, basis=%.6e, trig=%.6e",
+    //        ipsr, ipos, x, label_str[label], k, freq, trig, psr[ipsr].obsn[ipos].spherical_solar_wind, basis, trig);
+    return basis;
+}
+
+void t2UpdateFunc_nestlike_swgp(pulsar *psr, int ipsr ,param_label label,int k, double val, double err) {
+
+    if (k==0 && label==param_swgp_sin){
+        if (writeResiduals&4){
+            double maxtspan = psr[ipsr].param[param_finish].val[0] - psr[ipsr].param[param_start].val[0];
+            double freq = ((double)(k+1.0))/(maxtspan);
+            FILE *fout;
+            fout = fopen("swgp.meta","w");
+            if (!fout){
+                printf("Unable to open file swgp.meta for writing\n");
+            }
+            fprintf(fout,"SWGP_OMEGA %lg\n",freq*2.0*M_PI);
+            fprintf(fout,"SWGP_EPOCH %lg\n",(double)psr[ipsr].param[param_pepoch].val[0]);
+            fclose(fout);
+        }
+    }
+    logdbg("%d %s %d %lg %lg",ipsr,label_str[label],k,val,err);
+    for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
+        double x = (double)(psr[ipsr].obsn[iobs].bbat - psr[ipsr].param[param_pepoch].val[0]);
+        double y = t2FitFunc_nestlike_swgp(psr,ipsr,x,iobs,label,k);
+        psr[ipsr].obsn[iobs].SWGPSignal  += y *val;
+        psr[ipsr].obsn[iobs].SWGPErr     += pow(y*err,2);
+
+    }
+}
+
 
 
 
