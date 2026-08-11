@@ -133,8 +133,8 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
     }
     else
     {
-        com1 = 0;
-        com2 = arr+1;
+        com1 = arr;
+        com2 = psr[p].nCompanion;
     }
 
     double outer_delay = 0.0;
