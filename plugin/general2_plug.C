@@ -775,6 +775,18 @@ void parseLine(pulsar *psr,char *line,double *errMult,char *null,char *format,ch
                             fprintf(fout,"%s",disp);
                             pos+=strlen(disp);
 			}
+            if (strcasecmp(var, "tnswgp") ==0) /*temponest solar-wind GP max-like signal*/
+            {
+                sprintf(disp,format,(longdouble)(psr[0].obsn[varN].SWGPSignal)); 
+                            fprintf(fout,"%s",disp);
+                            pos+=strlen(disp);
+            }
+            if (strcasecmp(var, "tnswgperr") ==0) /*temponest solar-wind GP max-like signal error*/
+            {
+                sprintf(disp,format,(longdouble)(psr[0].obsn[varN].SWGPErr)); 
+                            fprintf(fout,"%s",disp);
+                            pos+=strlen(disp);
+            }
 		   
 			if (strcasecmp(var, "tnrn") ==0) /*temponest red noise max-like signal*/
 			{

@@ -51,6 +51,7 @@ void callFitFuncPlugin(pulsar *psr,int npsr, const char *covarFuncFile); // curr
 
 void t2fit_postfit(pulsar *psr, int npsr);
 void subtractTNPoly(pulsar *psr, int ipsr, label param);
+static void subtractSWGPMeanSW(pulsar *psr, int ipsr);
 void t2fit_prefit(pulsar* psr, int npsr);
 
 // Remove elements from SVD sigma matrix below this value.
@@ -549,6 +550,8 @@ void t2fit_prefit(pulsar* psr, int npsr){
             psr[ipsr].obsn[iobs].TNRedErr = 0;
             psr[ipsr].obsn[iobs].TNDMSignal =0;
             psr[ipsr].obsn[iobs].TNDMErr = 0;
+            psr[ipsr].obsn[iobs].SWGPSignal =0;
+            psr[ipsr].obsn[iobs].SWGPErr = 0;
             psr[ipsr].obsn[iobs].TNChromSignal =0;
             psr[ipsr].obsn[iobs].TNChromErr = 0;
         }
@@ -581,6 +584,13 @@ void t2fit_postfit(pulsar* psr, int npsr){
             }
 
             subtractTNPoly(psr, ipsr,param_dm);
+        }
+
+        if (psr[ipsr].SWGPAmp && psr[ipsr].SWGPGam) {
+            for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
+                psr[ipsr].obsn[iobs].SWGPErr = sqrt(psr[ipsr].obsn[iobs].SWGPErr);
+            }
+            subtractSWGPMeanSW(psr, ipsr);
         }
 	    if (psr[ipsr].TNChromAmp && psr[ipsr].TNChromGam && psr[ipsr].TNChromIdx) {
 
@@ -731,6 +741,71 @@ void subtractTNPoly(pulsar *psr, int ipsr, label param)
         }
     }
     writeResiduals=_writeResiduals;
+}
+
+/*
+ * When NE_SW is being fitted alongside the SWGP, the SWGP coefficients can
+ * absorb a large mean solar-wind level that rightly belongs in the deterministic
+ * NE_SW term.  This function mirrors subtractTNPoly: it projects the SWGP
+ * signal accumulator onto the spherical solar-wind basis (the same column used
+ * by t2FitFunc_ne_sw), fits a single scalar amplitude via least squares,
+ * subtracts the mean from SWGPSignal, and transfers the amplitude into NE_SW.
+ *
+ * The function is a no-op when NE_SW is not being fitted.
+ */
+static void subtractSWGPMeanSW(pulsar *psr, int ipsr)
+{
+    if (!psr[ipsr].param[param_ne_sw].fitFlag[0])
+        return;
+
+    int _writeResiduals = writeResiduals;
+    writeResiduals = 0;
+
+    double *psr_x      = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
+    double *psr_y      = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
+    double *psr_e      = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
+    double *white_y    = (double *)malloc(sizeof(double) * psr[ipsr].nobs);
+    int    *psr_toaidx = (int    *)malloc(sizeof(int)    * psr[ipsr].nobs);
+
+    unsigned int psr_ndata = t2Fit_getFitData(psr + ipsr, psr_x, psr_y, psr_e, psr_toaidx);
+
+    /* One-column design matrix: the spherical solar-wind delay prefactor.
+     * t2FitFunc_ne_sw returns spherical_solar_wind, which already encodes the
+     * full geometry and frequency scaling, so a scalar amplitude in this basis
+     * is directly interpretable as an electron density at 1 AU (in NE_SW units). */
+    double **designMatrix       = malloc_blas(psr_ndata, 1);
+    double **white_designMatrix = malloc_blas(psr_ndata, 1);
+
+    for (unsigned int ifit = 0; ifit < psr_ndata; ++ifit) {
+        double basis = t2FitFunc_ne_sw(psr, ipsr, psr_x[ifit], psr_toaidx[ifit], param_ne_sw, 0);
+        /* Use SWGPSignal as the "data" for this mini-fit. */
+        psr_y[ifit]                 = psr[ipsr].obsn[psr_toaidx[ifit]].SWGPSignal;
+        designMatrix[ifit][0]       = basis;
+        white_designMatrix[ifit][0] = basis / psr[ipsr].obsn[psr_toaidx[ifit]].toaErr;
+        white_y[ifit]               = psr_y[ifit] / psr[ipsr].obsn[psr_toaidx[ifit]].toaErr;
+    }
+
+    double outP[1], outE[1];
+    TKleastSquares(psr_y, white_y, designMatrix, white_designMatrix,
+                   psr_ndata, 1, T2_SVD_TOL, 0, outP, outE, NULL);
+
+    logdbg("subtractSWGPMeanSW: NE_SW correction = %lg +/- %lg", outP[0], outE[0]);
+
+    /* Subtract the mean solar-wind contribution from the SWGP signal and
+     * add the fitted amplitude to NE_SW so that the total model is unchanged. */
+    t2UpdateFunc_ne_sw(psr, ipsr, param_ne_sw, 0, outP[0], -1);
+    for (unsigned int ifit = 0; ifit < psr_ndata; ++ifit)
+        psr[ipsr].obsn[psr_toaidx[ifit]].SWGPSignal -= designMatrix[ifit][0] * outP[0];
+
+    free_blas(designMatrix);
+    free_blas(white_designMatrix);
+    free(psr_x);
+    free(psr_y);
+    free(white_y);
+    free(psr_e);
+    free(psr_toaidx);
+
+    writeResiduals = _writeResiduals;
 }
 
 unsigned int t2Fit_getFitData(pulsar *psr, double* x, double* y,
@@ -1221,6 +1296,28 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
         }
 
 
+	   if (psr->SWGPAmp && psr->SWGPGam) {
+            for (int i=0;i<psr->SWGPC;++i) {
+                psr->param[param_swgp_sin].fitFlag[0]=1;
+                psr->param[param_swgp_cos].fitFlag[0]=1;
+
+                psr->param[param_swgp_sin].paramSet[0]=1;
+                psr->param[param_swgp_cos].paramSet[0]=1;
+
+                OUT.constraintIndex[OUT.nConstraints]=constraint_swgp_sin;
+                OUT.constraintCounters[OUT.nConstraints]=i;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_swgp;
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                ++OUT.nConstraints;
+                OUT.constraintIndex[OUT.nConstraints]=constraint_swgp_cos;
+                OUT.constraintCounters[OUT.nConstraints]=i;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_swgp;
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                ++OUT.nConstraints;
+            }
+        }
+
+
 
 
 	// add in TN shapelet parameters
@@ -1479,6 +1576,12 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
         psr->param[param_red_chrom_cos].fitFlag[0]=0;
         psr->param[param_red_chrom_sin].paramSet[0]=0;
         psr->param[param_red_chrom_cos].paramSet[0]=0;
+    }
+    if (psr->SWGPAmp && psr->SWGPGam) {
+        psr->param[param_swgp_sin].fitFlag[0]=0;
+        psr->param[param_swgp_cos].fitFlag[0]=0;
+        psr->param[param_swgp_sin].paramSet[0]=0;
+        psr->param[param_swgp_cos].paramSet[0]=0;
     }
     if (psr->param[param_shapevent].fitFlag[0]) {
         psr->param[param_shapevent].fitFlag[0]=0;
@@ -1825,6 +1928,20 @@ void t2fit_fillOneParameterFitInfo(pulsar* psr, param_label fit_param, const int
                 for (int i=0; i < psr->TNChromC  + psr->TNChrom_log_freqs; ++i){
                     OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_red_chrom;
                     OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_red_chrom;
+                    OUT.paramCounters[OUT.nParams]=i;
+                    OUT.paramIndex[OUT.nParams]=fit_param;
+                    ++OUT.nParams;
+                }
+
+            }
+            break;
+
+        case param_swgp_sin:
+        case param_swgp_cos:
+            {
+                for (int i=0; i < psr->SWGPC; ++i){
+                    OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_swgp;
+                    OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_swgp;
                     OUT.paramCounters[OUT.nParams]=i;
                     OUT.paramIndex[OUT.nParams]=fit_param;
                     ++OUT.nParams;

@@ -190,6 +190,7 @@ enum label {
     param_tel_vx,param_tel_vy,param_tel_vz,param_tel_x0,param_tel_y0,param_tel_z0,param_gwm_amp,param_gwcs_amp,param_gwecc,param_gwb_amp,
     param_dm_sin1yr,param_dm_cos1yr,param_brake,param_stateSwitchT,param_df1,
     param_red_sin, param_red_cos,param_jitter,param_red_dm_sin, param_red_dm_cos, param_red_chrom_sin, param_red_chrom_cos,
+    param_swgp_sin, param_swgp_cos,
     param_band_red_sin, param_band_red_cos,param_sx, param_sxr1, param_sxr2, param_sxer,
     param_group_red_sin, param_group_red_cos,
     param_ne_sw,
@@ -272,6 +273,8 @@ enum constraint {
     constraint_red_dm_cos,
     constraint_red_chrom_sin,
     constraint_red_chrom_cos,
+    constraint_swgp_sin,
+    constraint_swgp_cos,
     constraint_group_red_sin,
     constraint_group_red_cos,
     constraint_jitter,
@@ -423,6 +426,8 @@ typedef struct observation {
     double      TNRedErr;		  /*!< Error on Model red noise signal from temponest fit */
     double      TNDMSignal;         /*!< Model DM signal from temponest fit */
     double      TNDMErr;            /*!< Error on Model DM signal from temponest fit */
+    double      SWGPSignal;         /*!< Model solar-wind GP signal from temponest fit */
+    double      SWGPErr;            /*!< Error on solar-wind GP signal from temponest fit */
     double      TNGroupSignal;      /*!< Model Group Noise signal from temponest fit */
     double      TNGroupErr;         /*!< Error on Model Group Noise signal from temponest fit */
   double TNChromSignal; // Model of Chromatic noise from temponest
@@ -795,6 +800,10 @@ typedef struct pulsar {
     double TNDMGam;
     int TNDMC;
   double TNDMCoeffs[200];
+  double SWGPAmp;
+  double SWGPGam;
+  int SWGPC;
+  double SWGPCoeffs[200];
   double TNChromAmp;
   double TNChromGam;
   double TNChromIdx;
@@ -805,7 +814,8 @@ typedef struct pulsar {
  
     int TNsubtractDM;
     int TNsubtractRed;
-  int TNsubtractChrom;
+    int TNsubtractChrom;
+    int TNsubtractSWGP;
     int AverageResiduals; 
     int AverageDMResiduals;
     char AverageFlag[MAX_FLAG_LEN];

@@ -196,6 +196,38 @@ double constraints_nestlike_red_chrom(pulsar *psr,int ipsr, int iconstraint,int 
 }
 
 
+double constraints_nestlike_swgp(pulsar *psr,int ipsr, int iconstraint,int iparam,int constraintk,int k,void* special){
+    assert(iconstraint == constraint_swgp_sin || iconstraint == constraint_swgp_cos);
+
+    /*
+     * The SWGP uses the same diagonal power-law prior over Fourier
+     * coefficients as the DM GP, except that SWGP uses the enterprise
+     * definition of ampltude, and hence has the factor of 1/12/pi^2.
+     * The solar-wind geometry is part of the
+     * basis function itself, so it does not enter the coefficient prior.
+     *
+     * SWGPAmp corresponds to the enterprise hyperparameter log10_A_dm_sw.
+     * SWGPGam corresponds to the enterprise hyperparameter gamma_dm_sw.
+     */
+    if (constraintk==k &&
+            (
+             ((iconstraint == constraint_swgp_sin) && (iparam == param_swgp_sin)) ||
+             ((iconstraint == constraint_swgp_cos) && (iparam == param_swgp_cos)) )
+            ) {
+        double maxtspan = psr[ipsr].param[param_finish].val[0] - psr[ipsr].param[param_start].val[0];
+        double SWAmp = pow(10.,psr[ipsr].SWGPAmp);
+        double freq = ((double)(k+1.0))/(maxtspan);
+        double SWIndex = psr[ipsr].SWGPGam;
+        double df = (1.0/maxtspan)/86400.0;
+
+        double rho = (SWAmp*SWAmp)/12./M_PI/M_PI*pow(f1yr,(-3)) * pow(freq*365.25,(-SWIndex))*df;
+
+        return 1.0/sqrt(rho);
+    } else return 0;
+
+}
+
+
 double constraints_nestlike_jitter(pulsar *psr,int ipsr, int iconstraint,int iparam,int constraintk,int k,void* special){
     assert (iconstraint == constraint_jitter);
 

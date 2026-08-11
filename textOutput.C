@@ -1630,6 +1630,17 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
 
                 }
 
+                if (psr[p].SWGPAmp != 0 && psr[p].SWGPGam != 0){
+                    fprintf(fout2,"SWGPAmp %g\n", psr[p].SWGPAmp);
+                    fprintf(fout2,"SWGPGam %g\n", psr[p].SWGPGam);
+                    fprintf(fout2,"SWGPC %i\n", psr[p].SWGPC);
+                }
+
+                if (psr[p].TNsubtractSWGP == 1){
+                    fprintf(fout2,"TNsubtractSWGP 1\n");
+
+                }
+
 
                 if (psr[p].TNsubtractChrom == 1){
                     fprintf(fout2,"TNsubtractChrom 1\n");

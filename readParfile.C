@@ -1807,12 +1807,20 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         fscanf(fin,"%lf",&(psr->TNDMGam));
     else if (strcasecmp(str,"TNDMC")==0) /* TempoNest Red noise spectral index */
         fscanf(fin,"%d",&(psr->TNDMC));
+    else if (strcasecmp(str,"SWGPAmp")==0) /* Enterprise log10_A_dm_sw mapped to tempo2 SWGP amplitude */
+        fscanf(fin,"%lf",&(psr->SWGPAmp));
+    else if (strcasecmp(str,"SWGPGam")==0) /* Enterprise gamma_dm_sw mapped to tempo2 SWGP spectral index */
+        fscanf(fin,"%lf",&(psr->SWGPGam));
+    else if (strcasecmp(str,"SWGPC")==0) /* Number of harmonic SWGP Fourier modes */
+        fscanf(fin,"%d",&(psr->SWGPC));
     else if (strcasecmp(str,"TNDMFLog")==0)
         fscanf(fin,"%d",&(psr->TNDM_log_freqs));
     else if (strcasecmp(str,"TNDMFLog_factor")==0)
         fscanf(fin,"%lf",&(psr->TNDM_log_factor));
     else if(strcasecmp(str,"TNsubtractDM")==0)
         fscanf(fin,"%d",&(psr->TNsubtractDM));
+    else if(strcasecmp(str,"TNsubtractSWGP")==0)
+        fscanf(fin,"%d",&(psr->TNsubtractSWGP));
     else if(strcasecmp(str, "TNsubtractPoly")==0)
     {
         char packedVal[128];

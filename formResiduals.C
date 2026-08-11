@@ -130,6 +130,10 @@ void averageDMResiduals(pulsar *psr, int npsr){
                 {
                     resid -= psr[0].obsn[o].TNDMSignal;
                 }
+                if (psr[0].TNsubtractSWGP ==1)
+                {
+                    resid -= psr[0].obsn[o].SWGPSignal;
+                }
                 if (psr[0].TNsubtractChrom ==1)
                 {
                     resid -= psr[0].obsn[o].TNChromSignal;
@@ -301,6 +305,10 @@ void averageResiduals(pulsar *psr, int npsr){
 		  {
 		    resid -= (double) psr[0].obsn[o].TNDMSignal;
 		  }
+        if (psr[0].TNsubtractSWGP ==1)
+          {
+            resid -= (double) psr[0].obsn[o].SWGPSignal;
+          }
 		if (psr[0].TNsubtractChrom ==1)
 		  {
 		    resid -= (double) psr[0].obsn[o].TNChromSignal;
@@ -2380,7 +2388,7 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
 
 
 
-        if ((psr[p].TNsubtractDM ==1) || ( psr[p].TNsubtractRed ==1) || (psr[p].TNsubtractChrom ==1))
+        if ((psr[p].TNsubtractDM ==1) || ( psr[p].TNsubtractRed ==1) || (psr[p].TNsubtractChrom ==1) || (psr[p].TNsubtractSWGP ==1))
         {
             for(i=0;i<=psr[p].nobs; i++)
             {
@@ -2398,6 +2406,11 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
                 if (psr[p].TNsubtractDM ==1)
                 {
                     psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNDMSignal;
+                }
+
+                if (psr[p].TNsubtractSWGP ==1)
+                {
+                    psr[p].obsn[i].residualtn-=psr[p].obsn[i].SWGPSignal;
                 }
 
 
