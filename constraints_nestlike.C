@@ -201,7 +201,9 @@ double constraints_nestlike_swgp(pulsar *psr,int ipsr, int iconstraint,int ipara
 
     /*
      * The SWGP uses the same diagonal power-law prior over Fourier
-     * coefficients as the DM GP. The solar-wind geometry is part of the
+     * coefficients as the DM GP, except that SWGP uses the enterprise
+     * definition of ampltude, and hence has the factor of 1/12/pi^2.
+     * The solar-wind geometry is part of the
      * basis function itself, so it does not enter the coefficient prior.
      *
      * SWGPAmp corresponds to the enterprise hyperparameter log10_A_dm_sw.
