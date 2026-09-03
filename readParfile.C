@@ -2114,7 +2114,7 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
             if (psr->nCompanion==0) psr->nCompanion=1;
         }
         else if ((strcasecmp(str,"PBDOT")!=0) && (str[0]=='P' || str[0]=='p') &&  /* Higher Pb derivatives */
-		 (str[1]=='B' || str[1]=='b') && (strcasecmp(str,"PB2DOT")!=0))
+                (str[1]=='B' || str[1]=='b') && (str[2]=='_') && (strcasecmp(str,"PB2DOT")!=0))
         {
             int pbval;
             if (sscanf(str+3,"%d",&pbval)==1)
@@ -2160,6 +2160,16 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 psr->param[param_pbdot].val[0]*=1.0e-12;
             psr->param[param_pbdot].prefit[0] = psr->param[param_pbdot].val[0];
         }
+        else if (strcasecmp(str,"PBDOT")!=0 && (str[0]=='P' || str[0]=='p') && (str[1]=='B' || str[1] == 'b') && (str[2]=='D' || str[2]=='d'))
+        {
+            int val;
+            if (sscanf(str+6,"%d",&val)==1)
+            {
+                if (val-1<psr->param[param_pbdot].aSize)
+                    readValue(psr,str,fin,&(psr->param[param_pbdot]),val-1);
+            }
+        }
+
 	else if (strcasecmp(str,"PB2DOT")==0)
         {
             readValue(psr,str,fin,&(psr->param[param_pb2dot]),0);
@@ -2184,6 +2194,29 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 psr->param[param_a1dot].val[0]*=1.0e-12;
             psr->param[param_a1dot].prefit[0] = psr->param[param_a1dot].val[0];
         }
+        else if (strcasecmp(str,"XDOT")!=0 && (str[0]=='X' || str[0]=='x') &&
+                (str[1]=='D' || str[1]=='d'))
+        {
+            int val;
+            if (sscanf(str+5,"%d",&val)==1)
+            {
+                if (val-1<psr->param[param_a1dot].aSize)
+                    readValue(psr,str,fin,&(psr->param[param_a1dot]),val-1);
+            }
+        }
+
+        else if (strcasecmp(str,"X2DOT")!=0 && (str[0]=='X' || str[0]=='x') &&
+                (str[1]=='2') && (str[2]=='D' || str[2]=='d'))
+        {
+            /* X2DOT_n: per-companion second derivative of A1 (A1DOT2) */
+            int val;
+            if (sscanf(str+6,"%d",&val)==1)
+            {
+                if (val-1<psr->param[param_a2dot].aSize)
+                    readValue(psr,str,fin,&(psr->param[param_a2dot]),val-1);
+            }
+        }
+
         else if ( strcasecmp(str,"X2DOT")==0)
         {
             // Ryan: set this value which is used in THE MSS model plugin

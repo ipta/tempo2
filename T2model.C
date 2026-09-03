@@ -60,12 +60,12 @@ void getKeplerian(pulsar *psr,int com,double *pb,longdouble *t0,double *ecc,
 void addKeplerianJumps(pulsar *psr,int ipos,double *torb,double *x,double *ecc,
         double *omz,double *pb);
 void getPostKeplerian(pulsar *psr,int com,double an,double *si,double *m2,
-        double *mtot,double *omdot, double *gamma,double *xdot,
+        double *mtot,double *omdot, double *gamma,double *xdot,double *x2dot,
 		      double *xpbdot, double *pbdot, double *pb2dot, double *edot,double *pmra,
         double *pmdec,double *dpara, double *dr,double *dth,
         double *a0,double *b0,double *xomdot,double *afac,
         double *eps1dot,double *eps2dot,double *daop);
-void updateParameters(double edot,double xdot,double eps1dot,double eps2dot,
+void updateParameters(double edot,double xdot,double x2dot,double eps1dot,double eps2dot,
         longdouble tt0,double *ecc,double *x,double *eps1,
         double *eps2);
 void deriveKeplerian(double pb,double kom,double *an,double *sin_omega,
@@ -89,7 +89,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
     double rad2deg = 180.0/M_PI;
     double SUNMASS = 4.925490947e-6;
     longdouble tt0,t0,ct,t0asc;
-    double m2,x,ecc,er,xdot,edot,dr,dth,eth;
+    double m2,x,ecc,er,xdot,x2dot,edot,dr,dth,eth;
     double pbdot,pb2dot,xpbdot,phase,u,gamma;
     double orbits;
     int    norbits;
@@ -134,12 +134,15 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
     else
     {
         com1 = arr;
-        com2 = arr+1;
+        com2 = psr[p].nCompanion;
     }
+
+    double outer_delay = 0.0;
+    double inner_derivative_dT0 = 0.0;
 
     //    printf("Number of companions = %d %d\n",com1,com2);
 
-    for (com = com1; com < com2;com++)
+    for (com = com2 - 1; com >= com1; com--)
     {      
         /* Obtain Keplerian parameters */   
         getKeplerian(&psr[p],com,&pb,&t0,&ecc,&omz,&x,&eps1,&eps2,&t0asc,
@@ -149,7 +152,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
         /* Parameters derived from the Keplerian parameters */
         deriveKeplerian(pb,kom,&an,&sin_omega,&cos_omega);
         /* Obtain post-Keplerian parameters */
-        getPostKeplerian(&psr[p],com,an,&si,&m2,&mtot,&omdot,&gamma,&xdot,&xpbdot,
+        getPostKeplerian(&psr[p],com,an,&si,&m2,&mtot,&omdot,&gamma,&xdot,&x2dot,&xpbdot,
 			 &pbdot, &pb2dot,&edot,&pmra,&pmdec,&dpara,&dr,&dth,&a0,&b0,
                 &xomdot,&afac,&eps1dot,&eps2dot,&daop);
 
@@ -178,7 +181,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
         /* Derive parameters from the post-Keplerian parameters */
         derivePostKeplerian(mtot,m2,dr,dth,ecc,&m1,&er,&eth);
         /* Obtain delta T */
-        ct  = psr[p].obsn[ipos].bbat;      
+        ct  = psr[p].obsn[ipos].bbat - outer_delay / SECDAY;
         if (psr[p].param[param_t0].paramSet[com]==1)        
             tt0 = (ct-t0)*SECDAY;
         else if( psr[p].param[param_tasc].paramSet[com]==1) 
@@ -189,7 +192,7 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
         }
         //      logdbg("going to update Parameters");
         /* Update parameters with their time derivatives */
-        updateParameters(edot,xdot,eps1dot,eps2dot,tt0,&ecc,&x,&eps1,&eps2);
+        updateParameters(edot,xdot,x2dot,eps1dot,eps2dot,tt0,&ecc,&x,&eps1,&eps2);
         //      logdbg("updated parameters");
 
         /* Do some checks */
@@ -456,11 +459,19 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
         }    
         //      printf("T2a: %g %g %g %g %g drepp=%g ecc=%g su =%g ome =%g ds = %g da = %g %g %g\n",(double)d2bar,(double)dre,(double)anhat,(double)drep,(double)allTerms,(double)drepp,(double)ecc,(double)su,(double)onemecu,(double)ds,(double)da,(double)DAOP,(double)DSR);
         torb-=d2bar;                                  /* Equation 42  */
+        outer_delay += d2bar;
 
-        if (param==-1 && com == psr[p].nCompanion-1) return torb;
+        if (param==-1 && com == 0) return torb;
         else if (param!=-1 && com==arr)
         {
             // Now we need the partial derivatives. Use DD equations 62a - 62k.
+          inner_derivative_dT0 = 0.0;
+          int com_inner;
+          for (com_inner = 0; com_inner < arr; com_inner++){
+            inner_derivative_dT0 +=
+              T2model(psr,p,ipos,param_t0,com_inner) / SECDAY;
+          }
+
             if (psr[p].param[param_ecc].paramSet[com]==1)
             {
                 csigma=x*(-sw*su+sqr1me2*cw*cu)/onemecu;      /* Equation 62a */
@@ -489,18 +500,18 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
             }
 
 	    //fprintf(stderr, "CSIGMA %.8le AN  %.8le TT0  %.8Le PB %.8le\n", csigma, an, tt0, pb);
-
-            if (param==param_pb)	return -csigma*an*SECDAY*tt0/(pb); 
-            else if (param==param_a1)      return cx;
-            else if (param==param_ecc)     return ce;
-            else if (param==param_edot)     return ce*tt0;
-            else if (param==param_om)      return comega;
+            double fac = (1.0 + inner_derivative_dT0);
+            if (param==param_pb)	return -csigma*an*SECDAY*tt0/(pb) * fac; 
+            else if (param==param_a1)      return cx * fac;
+            else if (param==param_ecc)     return ce * fac;
+            else if (param==param_edot)     return ce*tt0 * fac;
+            else if (param==param_om)      return comega * fac;
             else if (param==param_omdot)   
-                return ae*comega/(an*360.0/(2.0*M_PI)*365.25*SECDAY);
-            else if (param==param_t0)      return -csigma*an*SECDAY;
+                return ae*comega/(an*360.0/(2.0*M_PI)*365.25*SECDAY) * fac;
+            else if (param==param_t0)      return -csigma*an*SECDAY * fac;
             else if (param==param_pbdot){
                 if(psr[p].param[param_pbdot].nLinkFrom>0){
-		  return 0.5*tt0*(-csigma*an*SECDAY*tt0/(pb*SECDAY));
+		  return 0.5*tt0*(-csigma*an*SECDAY*tt0/(pb*SECDAY)) * fac;
 		  //return 0.5*tt0*(-csigma*an*SECDAY*tt0/(pb*SECDAY));
                     /*- SPEED_LIGHT/(getParameterValue(&psr[p],param_pb,0)*SECDAY*
                       (pow(getParameterValue(&psr[p],param_pmra,0)*MASYR2RADS,2)+
@@ -508,23 +519,24 @@ double T2model(pulsar *psr,int p,int ipos,int param,int arr)
                       getParameterValue(&psr[p],param_daop,0))*
                       (C*(-DK011-DK012)+S*(DK021+DK022));*/
                 }
-                else  return 0.5*tt0*(-csigma*an*SECDAY*tt0/(pb*SECDAY));
+                else  return 0.5*tt0*(-csigma*an*SECDAY*tt0/(pb*SECDAY)) * fac;
             }
 	    else if (param==param_pb2dot)
 	      {
-		return  1./6.*tt0*tt0*(-csigma*an*tt0/(pb));
+		return  1./6.*tt0*tt0*(-csigma*an*tt0/(pb)) * fac;
 	      }
 
-            else if (param==param_sini)    return csi;
-            else if (param==param_gamma)   return cgamma;
-            else if (param==param_m2)      return cm2*SUNMASS;
-            else if (param==param_a1dot)   return cx*tt0;
-            else if (param==param_eps1)    return ceps1;
-            else if (param==param_eps1dot) return ceps1*tt0;
-            else if (param==param_eps2dot) return ceps2*tt0;
-            else if (param==param_eps2)    return ceps2;
-            else if (param==param_tasc)    return -csigma*an*SECDAY;
-            else if (param==param_shapmax) return cshapmax;
+            else if (param==param_sini)    return csi * fac;
+            else if (param==param_gamma)   return cgamma * fac;
+            else if (param==param_m2)      return cm2*SUNMASS * fac;
+            else if (param==param_a1dot)   return cx*tt0 * fac;
+            else if (param==param_a2dot)   return 0.5*cx*tt0*tt0 * fac;
+            else if (param==param_eps1)    return ceps1 * fac;
+            else if (param==param_eps1dot) return ceps1*tt0 * fac;
+            else if (param==param_eps2dot) return ceps2*tt0 * fac;
+            else if (param==param_eps2)    return ceps2 * fac;
+            else if (param==param_tasc)    return -csigma*an*SECDAY * fac;
+            else if (param==param_shapmax) return cshapmax * fac;
             else if (param==param_stig){
                 return( -2.0 * m2 / stig * ( 1.0 - 3.0 * lgf - ( 1.0 - stig * stig ) / fs ) 
                         + 2.0 * m2 * ( 4.0 * sin( TrueAnom ) - stig * cos( 2.0 * TrueAnom ) ) );	    
@@ -607,7 +619,7 @@ void updateT2(pulsar *psr,double val,double err,int pos,int arr){
         psr->param[pos].val[arr] += val;
         psr->param[pos].err[arr]  = err;
     }
-    else if (pos==param_a1dot || pos == param_eps1dot || pos==param_eps2dot)
+    else if (pos==param_a1dot || pos==param_a2dot || pos == param_eps1dot || pos==param_eps2dot)
     {
         psr->param[pos].val[arr] += val;
         psr->param[pos].err[arr]  = err;
@@ -762,7 +774,7 @@ void addKeplerianJumps(pulsar *psr,int ipos,double *torb,double *x,double *ecc,
  */
 
 void getPostKeplerian(pulsar *psr,int com,double an,double *si,double *m2,
-        double *mtot,double *omdot, double *gamma,double *xdot,
+        double *mtot,double *omdot, double *gamma,double *xdot,double *x2dot,
 		      double *xpbdot,double *pbdot, double *pb2dot, double *edot,double *pmra,
         double *pmdec,double *dpara, double *dr,double *dth,
         double *a0,double *b0,double *xomdot,double *afac,
@@ -792,6 +804,7 @@ void getPostKeplerian(pulsar *psr,int com,double an,double *si,double *m2,
     *omdot   = getParameter(psr,param_omdot,com)/(rad2deg*365.25*SECDAY*an);
     *gamma   = getParameter(psr,param_gamma,com);
     *xdot    = getParameter(psr,param_a1dot,com);
+    *x2dot   = getParameter(psr,param_a2dot,com);
     *xpbdot  = getParameter(psr,param_xpbdot,com);
     *pbdot   = getParameter(psr,param_pbdot,com);
     *pb2dot  = getParameter(psr,param_pb2dot,com);
@@ -813,11 +826,11 @@ void getPostKeplerian(pulsar *psr,int com,double an,double *si,double *m2,
 }
 
 
-void updateParameters(double edot,double xdot,double eps1dot,double eps2dot,
+void updateParameters(double edot,double xdot,double x2dot,double eps1dot,double eps2dot,
         longdouble tt0,double *ecc,double *x,double *eps1,
         double *eps2){
     (*ecc)  += edot*tt0;
-    (*x)    += xdot*tt0;
+    (*x)    += xdot*tt0 + 0.5*x2dot*tt0*tt0;
     (*eps1) += eps1dot*tt0;
     (*eps2) += eps2dot*tt0;
 }
