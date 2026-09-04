@@ -752,18 +752,21 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
             }
     
 
-             /* Add FD parameters */
-             // FD parameters used to be added to tdis1 in dm_delays, but more logical to add them here since
-             // we attribute these delays to profile evolusion/template matching, and hence affect phase not 
-             // observation time. This affects the binary model.
+            /* Add FD parameters */
+            // FD parameters used to be added to tdis1 in dm_delays, but more logical to add them here since
+            // we attribute these delays to profile evolution/template matching, and hence they affect phase
+            // rather than observation time. This affects the binary model.
             if (psr[p].param[param_fddc].paramSet[0]==1 && psr[p].obsn[i].freqSSB>1)
-                phaseJ -= (double)(
-                    (psr[p].param[param_fddc].val[0]/pow(psr[p].obsn[i].freqSSB*1.0e-6,(double)psr[p].param[param_fddi].val[0]))
-                    *psr[p].param[param_f].val[0]);
+                phaseJ -=
+                    (psr[p].param[param_fddc].val[0] /
+                    powl((longdouble)psr[p].obsn[i].freqSSB * 1.0e-6L,
+                    psr[p].param[param_fddi].val[0]))
+                    *psr[p].param[param_f].val[0];
             for (k=0; k<psr[p].param[param_fd].aSize; k++) {
                 if (psr[p].param[param_fd].paramSet[k]==1 && psr[p].obsn[i].freqSSB>1)
-                    phaseJ -= (double)(psr[p].param[param_fd].val[k] * 
-                            pow(log(psr[p].obsn[i].freqSSB/1e9),k+1)) * psr[p].param[param_f].val[0];
+                    phaseJ -= psr[p].param[param_fd].val[k] *
+                            powl(logl((longdouble)psr[p].obsn[i].freqSSB / 1.0e9L), k+1) *
+                            psr[p].param[param_f].val[0];
             }
             // Add FDJUMPs
             for (k=1;k<=psr[p].nfdJumps;k++)	    
@@ -787,8 +790,6 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
                     }
                 }
             }
-
-                   
 
             /* Red Shapelet Events (M. Keith 2023) */
             phaseShape=0;
@@ -2473,4 +2474,3 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
     delete[] phase5;
     logtchk("Leave formresiduals()");
 }
-
