@@ -116,7 +116,7 @@
 #define DM_CONST    2.41e-4
 #define DM_CONST_SI 7.436e6              /*!< Dispersion constant in SI units            */
 #define PCM         3.08568025e16        /*!< one parsec in meters                       */
-#define MASYR2RADS  1.53628185e-16       /*!< Converts from mas/yr to rad/s              */
+#define MASYR2RADS  1.53628185004416045e-16 /*!< Converts from mas/yr to rad/s              */
 #define MAX_MSG     50                   /*!< Maximum number of different warnings       */
 
 #define START_FINISH_DELTA longdouble(1e-11)
