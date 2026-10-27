@@ -139,6 +139,10 @@ void averageDMResiduals(pulsar *psr, int npsr){
                     resid -= psr[0].obsn[o].TNChromSignal;
                 }
 
+                if (psr[0].TNsubtractWhite ==1)
+                {
+                    resid -= psr[0].obsn[o].TNWhiteSignal;
+                }
 
 
                 int bin = floor(((double)psr[0].obsn[o].bat-mintime)/timestep);
@@ -313,6 +317,11 @@ void averageResiduals(pulsar *psr, int npsr){
 		  {
 		    resid -= (double) psr[0].obsn[o].TNChromSignal;
 		  }
+
+        if (psr[0].TNsubtractWhite ==1)
+          {
+            resid -= (double) psr[0].obsn[o].TNWhiteSignal;
+          }
 
 		AverageRes[flagindex][bin] += resid/adjustedErr;
                 AverageBat[flagindex][bin] += (double)psr[0].obsn[o].bat/adjustedErr;

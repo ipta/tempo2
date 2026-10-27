@@ -603,7 +603,7 @@ void t2fit_postfit(pulsar* psr, int npsr){
             subtractTNPoly(psr, ipsr,param_cm);
         }
         // if there are any ECORR or SECORR parameters:
-        if ((psr->nTNECORR > 0) || (psr->nTNSECORR > 0)) {
+        if ((psr[ipsr].nTNECORR > 0) || (psr[ipsr].nTNSECORR > 0)) {
             for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
                 psr[ipsr].obsn[iobs].TNWhiteErr = sqrt(psr[ipsr].obsn[iobs].TNWhiteErr);
             }
