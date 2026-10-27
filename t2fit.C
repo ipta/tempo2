@@ -1334,6 +1334,12 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
         // TN ECORR/TNSECORR epochs
         if ((psr->nTNECORR > 0) || (psr->nTNSECORR > 0)) {
             // rebuild the cache.
+            for (int iobs = 0; iobs < psr->nobs; ++iobs) {
+                if (t2Fit_nestlike_jitterSelector(psr, 0, iobs) == -2) {
+                    logerr("Overlapping TNECORR/TNSECORR selectors for observation %d", iobs);
+                    std::exit(EXIT_FAILURE);
+                }
+            }
             t2fit_nestlike_get_jitter_group(psr,0,true);
             std::vector<int> jitter_groups;
             int tnepochs=0;
