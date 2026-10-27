@@ -432,6 +432,8 @@ typedef struct observation {
     double      TNGroupErr;         /*!< Error on Model Group Noise signal from temponest fit */
   double TNChromSignal; // Model of Chromatic noise from temponest
   double TNChromErr; // Error on Chromatic noise from temponest
+  double TNWhiteSignal; // Model of White noise from temponest
+  double TNWhiteErr; // Error on White noise from temponest
     double      freq;               /*!< Frequency of observation (in MHz)                          */
     double      freqSSB;            /*!< Frequency of observation in barycentric frame (in Hz)      */
     double      toaErr;             /*!< Error on TOA (in us)                                       */
@@ -816,6 +818,7 @@ typedef struct pulsar {
     int TNsubtractRed;
     int TNsubtractChrom;
     int TNsubtractSWGP;
+    int TNsubtractWhite;
     int AverageResiduals; 
     int AverageDMResiduals;
     char AverageFlag[MAX_FLAG_LEN];
