@@ -1603,11 +1603,14 @@ void textOutput(pulsar *psr,int npsr,double globalParameter,int nGlobal,int outR
 
                 }
 
+                if (psr[p].TNsubtractWhite ==1){
+                    fprintf(fout2,"TNsubtractWhite 1\n");
+                }
                 if (psr[p].TNsubtractRed ==1){
                     fprintf(fout2,"TNsubtractRed 1\n");
-
                 }
                 
+
                 if ( (psr[p].TNRedAmp != 0 && psr[p].TNRedGam != 0) ||
                     (psr[p].TNDMAmp != 0 && psr[p].TNDMGam != 0) ||
                     (psr[p].TNChromAmp != 0 && psr[p].TNChromGam != 0) ){
