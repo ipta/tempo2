@@ -555,6 +555,8 @@ void t2fit_prefit(pulsar* psr, int npsr){
             psr[ipsr].obsn[iobs].SWGPErr = 0;
             psr[ipsr].obsn[iobs].TNChromSignal =0;
             psr[ipsr].obsn[iobs].TNChromErr = 0;
+            psr[ipsr].obsn[iobs].TNWhiteSignal = 0;
+            psr[ipsr].obsn[iobs].TNWhiteErr = 0;
         }
     }
 }
@@ -599,6 +601,12 @@ void t2fit_postfit(pulsar* psr, int npsr){
                 psr[ipsr].obsn[iobs].TNChromErr = sqrt(psr[ipsr].obsn[iobs].TNChromErr);
             }
             subtractTNPoly(psr, ipsr,param_cm);
+        }
+        // if there are any ECORR or SECORR parameters:
+        if ((psr->nTNECORR > 0) || (psr->nTNSECORR > 0)) {
+            for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
+                psr[ipsr].obsn[iobs].TNWhiteErr = sqrt(psr[ipsr].obsn[iobs].TNWhiteErr);
+            }
         }
     }
 }
@@ -1257,7 +1265,7 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
         }
 
 
-	   if (psr->TNDMAmp && psr->TNDMGam) {
+	    if (psr->TNDMAmp && psr->TNDMGam) {
             for (int i=0;i<psr->TNDMC;++i) {
                 /**
                  * Temporary fix here!
@@ -1321,63 +1329,65 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
 
 
 
-	// add in TN shapelet parameters
+        // TN ECORR/TNSECORR epochs
+        if ((psr->nTNECORR > 0) || (psr->nTNSECORR > 0)) {
+            // Build one constrained jitter offset for each unambiguous ECORR epoch.
+            // The same matcher is used later when constructing the design matrix.
+            std::vector<char> jitterAssigned(psr_ndata, 0);
+            int tnepochs = 0;
+            int tnsecorrEpochs = 0;
 
-
-        // Build one constrained jitter offset for each unambiguous ECORR epoch.
-        // The same matcher is used later when constructing the design matrix.
-        std::vector<char> jitterAssigned(psr_ndata, 0);
-        int tnepochs = 0;
-        int tnsecorrEpochs = 0;
-
-        for (int idata = 0; idata < psr_ndata; ++idata) {
-            const int iobs = psr_toaidx[idata];
-            const int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
-            if (selector == -2) {
-                logerr("TOA %d matches multiple TNECORR/TNSECORR selectors", iobs);
-                std::exit(EXIT_FAILURE);
-            }
-        }
-
-        for (int idata = 0; idata < psr_ndata; ++idata) {
-            if (jitterAssigned[idata]) continue;
-
-            const int iobs = psr_toaidx[idata];
-            const int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
-            if (selector < 0) continue;
-
-            std::vector<int> epochMembers;
-            for (int idata2 = 0; idata2 < psr_ndata; ++idata2) {
-                if (t2Fit_nestlike_jitterMatches(psr, 0, iobs, psr_toaidx[idata2])) {
-                    if (jitterAssigned[idata2]) {
-                        logerr("Overlapping ECORR epochs include TOA %d more than once",
-                                psr_toaidx[idata2]);
-                        std::exit(EXIT_FAILURE);
-                    }
-                    epochMembers.push_back(idata2);
+            for (int idata = 0; idata < psr_ndata; ++idata) {
+                const int iobs = psr_toaidx[idata];
+                const int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
+                if (selector == -2) {
+                    logerr("TOA %d matches multiple TNECORR/TNSECORR selectors", iobs);
+                    std::exit(EXIT_FAILURE);
                 }
             }
+        
+            
+            for (int idata = 0; idata < psr_ndata; ++idata) {
+                if (jitterAssigned[idata]) continue;
 
-            OUT.constraintIndex[OUT.nConstraints] = constraint_jitter;
-            OUT.constraintCounters[OUT.nConstraints] = iobs;
-            OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
-            ++OUT.nConstraints;
+                const int iobs = psr_toaidx[idata];
+                const int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
+                if (selector < 0) continue;
 
-            OUT.paramIndex[OUT.nParams] = param_jitter;
-            OUT.paramCounters[OUT.nParams] = iobs;
-            OUT.paramDerivs[OUT.nParams] = t2FitFunc_nestlike_jitter;
-            OUT.updateFunctions[OUT.nParams] = t2UpdateFunc_nestlike_jitter;
-            ++OUT.nParams;
+                std::vector<int> epochMembers;
+                for (int idata2 = 0; idata2 < psr_ndata; ++idata2) {
+                    if (t2Fit_nestlike_jitterMatches(psr, 0, iobs, psr_toaidx[idata2])) {
+                        if (jitterAssigned[idata2]) {
+                            logerr("Overlapping ECORR epochs include TOA %d more than once",
+                                    psr_toaidx[idata2]);
+                            std::exit(EXIT_FAILURE);
+                        }
+                        epochMembers.push_back(idata2);
+                    }
+                }
 
-            for (int member : epochMembers) jitterAssigned[member] = 1;
-            if (selector < psr->nTNECORR) ++tnepochs;
-            else ++tnsecorrEpochs;
+                OUT.constraintIndex[OUT.nConstraints] = constraint_jitter;
+                OUT.constraintCounters[OUT.nConstraints] = iobs;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
+                ++OUT.nConstraints;
+
+                OUT.paramIndex[OUT.nParams] = param_jitter;
+                OUT.paramCounters[OUT.nParams] = iobs;
+                OUT.paramDerivs[OUT.nParams] = t2FitFunc_nestlike_jitter;
+                OUT.updateFunctions[OUT.nParams] = t2UpdateFunc_nestlike_jitter;
+                ++OUT.nParams;
+
+                for (int member : epochMembers) jitterAssigned[member] = 1;
+                if (selector < psr->nTNECORR) ++tnepochs;
+                else ++tnsecorrEpochs;
+            }
+
+            if (psr->nTNECORR > 0)
+                logmsg("Generated %d TNepochs from %d TNECORRs", tnepochs, psr->nTNECORR);
+            if (psr->nTNSECORR > 0)
+                logmsg("Generated %d TNepochs from %d TNSECORRs", tnsecorrEpochs, psr->nTNSECORR);
         }
-
-        if (psr->nTNECORR > 0)
-            logmsg("Generated %d TNepochs from %d TNECORRs", tnepochs, psr->nTNECORR);
-        if (psr->nTNSECORR > 0)
-            logmsg("Generated %d TNepochs from %d TNSECORRs", tnsecorrEpochs, psr->nTNSECORR);
+        // TN Shapelet events
         for (unsigned ishape=0; ishape < psr->nTNShapeletEvents; ++ishape){
             if (psr->TNShapeletEvFitFlag[ishape]==1) {
                     // fit for the amplitudes of this shapelet
@@ -1385,6 +1395,7 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
                     psr->param[param_shapevent].paramSet[0]=1;
             }
         }
+    
         // end of TN stuff
     }
 

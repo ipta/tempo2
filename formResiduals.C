@@ -2405,7 +2405,12 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
 
 
 
-        if ((psr[p].TNsubtractDM ==1) || ( psr[p].TNsubtractRed ==1) || (psr[p].TNsubtractChrom ==1) || (psr[p].TNsubtractSWGP ==1))
+        if ((psr[p].TNsubtractDM ==1) || 
+                (psr[p].TNsubtractRed ==1) || 
+                (psr[p].TNsubtractChrom ==1) || 
+                (psr[p].TNsubtractSWGP ==1) || 
+                (psr[p].TNsubtractWhite ==1)   
+            )
         {
             for(i=0;i<=psr[p].nobs; i++)
             {
@@ -2434,6 +2439,11 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
                 if (psr[p].TNsubtractChrom ==1)
                 {
                     psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNChromSignal;
+                }
+
+                if (psr[p].TNsubtractWhite ==1)
+                {
+                    psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNWhiteSignal;
                 }
 
 
