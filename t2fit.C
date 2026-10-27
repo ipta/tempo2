@@ -63,7 +63,6 @@ void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
     t2fit_prefit(psr,npsr);
     if (strcmp(psr[0].fitFunc,"default")!=0){
         callFitFuncPlugin(psr,npsr,covarFuncFile);
-        t2fit_postfit(psr,npsr);
         return;
     }
 
@@ -1344,7 +1343,7 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
             std::vector<int> jitter_groups;
             int tnepochs=0;
             int tnsecorrEpochs=0;
-            for (int idata = 0; idata < psr->nobs; ++idata) {
+            for (int idata = 0; idata < psr_ndata; ++idata) {
                 int iobs = psr_toaidx[idata];
                 int jitter_group = t2fit_nestlike_get_jitter_group(psr,iobs,false);
 

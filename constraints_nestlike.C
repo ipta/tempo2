@@ -238,7 +238,7 @@ double constraints_nestlike_jitter(pulsar *psr,int ipsr, int iconstraint,int ipa
     // k is a jitter group index; find a representative TOA in that group
     int kobs = -1;
     for (int i = 0; i < psr[ipsr].nobs; ++i) {
-        if (t2fit_nestlike_get_jitter_group(psr+ipsr, i, false) == k) { kobs = i; break; }
+        if (!psr[ipsr].obsn[i].deleted && t2fit_nestlike_get_jitter_group(psr+ipsr, i, false) == k) { kobs = i; break; }
     }
     const int selector = (kobs < 0) ? -1 : t2Fit_nestlike_jitterSelector(psr, ipsr, kobs);
     if (selector < 0) {

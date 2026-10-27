@@ -526,6 +526,7 @@ int t2fit_nestlike_get_jitter_group(pulsar *psr, int iobs, bool rebuild_cache) {
         // first find the selector id for each observation
         std::map<int, std::vector<int>> selectorToObsIndices;
         for (int obsIndex = 0; obsIndex < psr->nobs; ++obsIndex) {
+            if (psr->obsn[obsIndex].deleted) continue;
             int selector = t2Fit_nestlike_jitterSelector(psr, 0, obsIndex);
             if (selector >= 0) selectorToObsIndices[selector].push_back(obsIndex);
         }
