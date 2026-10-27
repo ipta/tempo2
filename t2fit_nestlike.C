@@ -533,7 +533,8 @@ int t2fit_nestlike_get_jitter_group(pulsar *psr, int iobs, bool rebuild_cache) {
 
         // for each selector now find the groups based on time separation
         int currentGroup = -1;
-        for (auto &[selector, obsIndices] : selectorToObsIndices) {
+        for (auto &selectorEntry : selectorToObsIndices) {
+            std::vector<int> &obsIndices = selectorEntry.second;
             std::sort(obsIndices.begin(), obsIndices.end(), [&](int a, int b) {
                 return psr->obsn[a].sat < psr->obsn[b].sat;
             });
