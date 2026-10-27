@@ -1,7 +1,9 @@
 #include <cmath>
 #include "constraints_nestlike.h"
+#include "t2fit_nestlike.h"
 #include <assert.h>
 #include <string.h>
+#include <cstdlib>
 #define f1yr (1.0/3.16e7)
 
 double qp_term_cutoff(double freq_days, double logP, double f0, double sig, double lam, double df) {
@@ -231,68 +233,33 @@ double constraints_nestlike_swgp(pulsar *psr,int ipsr, int iconstraint,int ipara
 double constraints_nestlike_jitter(pulsar *psr,int ipsr, int iconstraint,int iparam,int constraintk,int k,void* special){
     assert (iconstraint == constraint_jitter);
 
-    if (iparam == param_jitter && constraintk == k) {
-        double ecorrval=0;
-        const int iobs = k;
-        for (int iecorr=0; iecorr < psr[ipsr].nTNECORR; iecorr++){
-            for (int iflag=0;iflag < psr[ipsr].obsn[iobs].nFlags; iflag++){
-                if (
-                        (strcmp(psr[ipsr].obsn[iobs].flagID[iflag],
-                                psr[ipsr].TNECORRFlagID[iecorr])==0)
-                        && (strcmp(psr[ipsr].obsn[iobs].flagVal[iflag],
-                                psr[ipsr].TNECORRFlagVal[iecorr])==0)
+    if (iparam != param_jitter || constraintk != k) return 0;
 
-                   ) {
-                    ecorrval = psr[ipsr].TNECORRVal[iecorr];
-                    break;
-                }
-                if (ecorrval > 0)break;
-            }
+    const int selector = t2Fit_nestlike_jitterSelector(psr, ipsr, k);
+    if (selector < 0) {
+        logerr("No unique TNECORR/TNSECORR selector for jitter epoch at TOA %d", k);
+        std::exit(EXIT_FAILURE);
+    }
+
+    double ecorrval;
+    if (selector < psr[ipsr].nTNECORR) {
+        ecorrval = psr[ipsr].TNECORRVal[selector];
+    } else {
+        const int secorrIndex = selector - psr[ipsr].nTNECORR;
+        const double tobsval = psr[ipsr].obsn[k].tobs;
+        if (!std::isfinite(tobsval) || tobsval <= 0.0) {
+            logerr("Invalid -tobs value for TNSECORR jitter epoch at TOA %d: %g", k, tobsval);
+            std::exit(EXIT_FAILURE);
         }
+        ecorrval = psr[ipsr].TNSECORRVal[secorrIndex] / sqrt(tobsval / 3600.0);
+    }
 
-	
+    if (!std::isfinite(ecorrval) || ecorrval <= 0.0) {
+        logerr("Invalid TNECORR/TNSECORR value for jitter epoch at TOA %d: %g", k, ecorrval);
+        std::exit(EXIT_FAILURE);
+    }
 
-	for (int iecorr=0; iecorr < psr[ipsr].nTNSECORR; iecorr++)
-	  {
-	    
-	    for (int iflag=0;iflag < psr[ipsr].obsn[iobs].nFlags; iflag++){
-	      if (
-		  (strcmp(psr[ipsr].obsn[iobs].flagID[iflag],
-			  psr[ipsr].TNSECORRFlagID[iecorr])==0)
-		  && (strcmp(psr[ipsr].obsn[iobs].flagVal[iflag],
-			     psr[ipsr].TNSECORRFlagVal[iecorr])==0)
-		  
-		  ) 
-		{
-		// need to add in correction here to scale with tobs
-		
-		
-		
-		double tobsval=psr[ipsr].obsn[iobs].tobs;
-		
-	 
-	 
-		ecorrval = psr[ipsr].TNSECORRVal[iecorr]/sqrt(tobsval/3600.);
-		
-		fprintf(stderr, "TOBS ERR TNSECORR  %.3e %.3e %.3e\n", tobsval, ecorrval,  psr[ipsr].TNSECORRVal[iecorr]); 
-		break;
-	      }
-	      if (ecorrval > 0)break;
-	    }
-	  }
-	    
-	return 1e6/ecorrval;
-	    
-	
-    } 
-    else 
-      {
-	return 0;
-      }
-    
-
-
-
+    return 1e6 / ecorrval;
 }
 
 double constraints_nestlike_band(pulsar *psr,int ipsr, int iconstraint,int iparam,int constraintk,int k,void* special){

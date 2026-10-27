@@ -9,6 +9,7 @@
 
 #include "TKfit.h"
 #include <stdlib.h>
+#include <cstdlib>
 #include <string.h>
 #include <assert.h>
 #include <enum_str.h>
@@ -1323,136 +1324,60 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
 	// add in TN shapelet parameters
 
 
-        // ECORR parameters
-        // Fits for a constrained jump for each "epoch" (i.e. observation)
-        int nepochs=0;
-        if (psr->nTNECORR > 0) {
+        // Build one constrained jitter offset for each unambiguous ECORR epoch.
+        // The same matcher is used later when constructing the design matrix.
+        std::vector<char> jitterAssigned(psr_ndata, 0);
+        int tnepochs = 0;
+        int tnsecorrEpochs = 0;
 
-	  const double dt = 1./SECDAY;
-            double xmin=0;
-            double xmax=0;
-            // flag observations that have been matched to an epoch already.
-            bool flag[psr_ndata];
-            for (int idata = 0; idata < psr_ndata; ++idata){
-                flag[idata]= false;
+        for (int idata = 0; idata < psr_ndata; ++idata) {
+            const int iobs = psr_toaidx[idata];
+            const int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
+            if (selector == -2) {
+                logerr("TOA %d matches multiple TNECORR/TNSECORR selectors", iobs);
+                std::exit(EXIT_FAILURE);
             }
-
-            for (int idata = 0; idata < psr_ndata; ++idata){
-                int iobs = psr_toaidx[idata];
-                // if this observation was in a previous epoch, then skip it.
-                if(flag[idata])continue;
-                // Here we check over all flags and ecorr params to see if it matches.
-                for (int iecorr=0; iecorr < psr->nTNECORR; iecorr++){
-                    for (int iflag=0;iflag < psr->obsn[iobs].nFlags; iflag++){
-                        if (
-                                (strcmp(psr->obsn[iobs].flagID[iflag],
-                                        psr->TNECORRFlagID[iecorr])==0)
-                                && (strcmp(psr->obsn[iobs].flagVal[iflag],
-                                        psr->TNECORRFlagVal[iecorr])==0)
-
-                           ) {
-                            xmin=psr_x[idata] - dt;
-                            xmax=psr_x[idata] + dt;
-                            // don't need to search any more on this epoch.
-                            flag[idata]=true;
-
-                            OUT.constraintIndex[OUT.nConstraints]=constraint_jitter;
-                            // we use the constraint counter to specify specific toa that represents this epoch
-                            OUT.constraintCounters[OUT.nConstraints]=iobs;
-                            OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
-                            ++OUT.nConstraints;
-
-                            OUT.paramIndex[OUT.nParams]=param_jitter;
-                            // we use the constraint counter to specify specific toa that represents this epoch
-                            OUT.paramCounters[OUT.nParams]=iobs;
-                            OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_jitter;
-                            OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_jitter;
-                            ++OUT.nParams;
-
-                            ++nepochs;
-                            break;
-                        }
-                        if(flag[idata])break;
-                    }
-                    if(flag[idata])break;
-                }
-                if (flag[idata]){
-                    for (int idata2 = idata; idata2 < psr_ndata; ++idata2){
-                        if(flag[idata2])continue;
-                        if(psr_x[idata2] > xmin && psr_x[idata2] < xmax){
-                            flag[idata2]=true;
-                        }
-                    }
-                }
-            }
-            logmsg("Generated %d TNepochs from %d TNECORRs",nepochs,psr->nTNECORR);
         }
 
+        for (int idata = 0; idata < psr_ndata; ++idata) {
+            if (jitterAssigned[idata]) continue;
 
-        nepochs=0;
-        if (psr->nTNSECORR > 0) {
+            const int iobs = psr_toaidx[idata];
+            const int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
+            if (selector < 0) continue;
 
-	  
-
-            const double dt = 1./SECDAY;
-            double xmin=0;
-            double xmax=0;
-            // flag observations that have been matched to an epoch already.
-            bool flag[psr_ndata];
-            for (int idata = 0; idata < psr_ndata; ++idata){
-                flag[idata]= false;
-            }
-
-            for (int idata = 0; idata < psr_ndata; ++idata){
-                int iobs = psr_toaidx[idata];
-                // if this observation was in a previous epoch, then skip it.
-                if(flag[idata])continue;
-                // Here we check over all flags and ecorr params to see if it matches.
-                for (int iecorr=0; iecorr < psr->nTNSECORR; iecorr++){
-                    for (int iflag=0;iflag < psr->obsn[iobs].nFlags; iflag++){
-                        if (
-                                (strcmp(psr->obsn[iobs].flagID[iflag],
-                                        psr->TNSECORRFlagID[iecorr])==0)
-                                && (strcmp(psr->obsn[iobs].flagVal[iflag],
-                                        psr->TNSECORRFlagVal[iecorr])==0)
-
-                           ) {
-                            xmin=psr_x[idata] - dt;
-                            xmax=psr_x[idata] + dt;
-                            // don't need to search any more on this epoch.
-                            flag[idata]=true;
-
-                            OUT.constraintIndex[OUT.nConstraints]=constraint_jitter;
-                            // we use the constraint counter to specify specific toa that represents this epoch
-                            OUT.constraintCounters[OUT.nConstraints]=iobs;
-                            OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
-                            ++OUT.nConstraints;
-
-                            OUT.paramIndex[OUT.nParams]=param_jitter;
-                            // we use the constraint counter to specify specific toa that represents this epoch
-                            OUT.paramCounters[OUT.nParams]=iobs;
-                            OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_jitter;
-                            OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_jitter;
-                            ++OUT.nParams;
-
-                            ++nepochs;
-                            break;
-                        }
-                        if(flag[idata])break;
+            std::vector<int> epochMembers;
+            for (int idata2 = 0; idata2 < psr_ndata; ++idata2) {
+                if (t2Fit_nestlike_jitterMatches(psr, 0, iobs, psr_toaidx[idata2])) {
+                    if (jitterAssigned[idata2]) {
+                        logerr("Overlapping ECORR epochs include TOA %d more than once",
+                                psr_toaidx[idata2]);
+                        std::exit(EXIT_FAILURE);
                     }
-                    if(flag[idata])break;
-                }
-                if (flag[idata]){
-                    for (int idata2 = idata; idata2 < psr_ndata; ++idata2){
-                        if(flag[idata2])continue;
-                        if(psr_x[idata2] > xmin && psr_x[idata2] < xmax){
-                            flag[idata2]=true;
-                        }
-                    }
+                    epochMembers.push_back(idata2);
                 }
             }
-            logmsg("Generated %d TNepochs from %d TNSECORRs",nepochs,psr->nTNSECORR);
+
+            OUT.constraintIndex[OUT.nConstraints] = constraint_jitter;
+            OUT.constraintCounters[OUT.nConstraints] = iobs;
+            OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
+            ++OUT.nConstraints;
+
+            OUT.paramIndex[OUT.nParams] = param_jitter;
+            OUT.paramCounters[OUT.nParams] = iobs;
+            OUT.paramDerivs[OUT.nParams] = t2FitFunc_nestlike_jitter;
+            OUT.updateFunctions[OUT.nParams] = t2UpdateFunc_nestlike_jitter;
+            ++OUT.nParams;
+
+            for (int member : epochMembers) jitterAssigned[member] = 1;
+            if (selector < psr->nTNECORR) ++tnepochs;
+            else ++tnsecorrEpochs;
         }
+
+        if (psr->nTNECORR > 0)
+            logmsg("Generated %d TNepochs from %d TNECORRs", tnepochs, psr->nTNECORR);
+        if (psr->nTNSECORR > 0)
+            logmsg("Generated %d TNepochs from %d TNSECORRs", tnsecorrEpochs, psr->nTNSECORR);
         for (unsigned ishape=0; ishape < psr->nTNShapeletEvents; ++ishape){
             if (psr->TNShapeletEvFitFlag[ishape]==1) {
                     // fit for the amplitudes of this shapelet

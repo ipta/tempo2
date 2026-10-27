@@ -469,20 +469,79 @@ void t2UpdateFunc_nestlike_red_chrom(pulsar *psr, int ipsr ,param_label label,in
 
 
 
+int t2Fit_nestlike_jitterSelector(pulsar *psr, int ipsr, int iobs) {
+    const observation &obs = psr[ipsr].obsn[iobs];
+    int selector = -1;
+    int matches = 0;
+
+    for (int iecorr = 0; iecorr < psr[ipsr].nTNECORR; ++iecorr) {
+        for (int iflag = 0; iflag < obs.nFlags; ++iflag) {
+            if (strcmp(obs.flagID[iflag], psr[ipsr].TNECORRFlagID[iecorr]) == 0
+                    && strcmp(obs.flagVal[iflag], psr[ipsr].TNECORRFlagVal[iecorr]) == 0) {
+                selector = iecorr;
+                ++matches;
+                break;
+            }
+        }
+    }
+
+    for (int iecorr = 0; iecorr < psr[ipsr].nTNSECORR; ++iecorr) {
+        for (int iflag = 0; iflag < obs.nFlags; ++iflag) {
+            if (strcmp(obs.flagID[iflag], psr[ipsr].TNSECORRFlagID[iecorr]) == 0
+                    && strcmp(obs.flagVal[iflag], psr[ipsr].TNSECORRFlagVal[iecorr]) == 0) {
+                selector = psr[ipsr].nTNECORR + iecorr;
+                ++matches;
+                break;
+            }
+        }
+    }
+
+    if (matches > 1) return -2;
+    return selector;
+}
+
+bool t2Fit_nestlike_jitterMatches(pulsar *psr, int ipsr, int epochObs, int iobs) {
+    const int selector = t2Fit_nestlike_jitterSelector(psr, ipsr, epochObs);
+    if (selector < 0) return false;
+
+    const char *flagID;
+    const char *flagVal;
+    if (selector < psr[ipsr].nTNECORR) {
+        flagID = psr[ipsr].TNECORRFlagID[selector];
+        flagVal = psr[ipsr].TNECORRFlagVal[selector];
+    } else {
+        const int secorrIndex = selector - psr[ipsr].nTNECORR;
+        flagID = psr[ipsr].TNSECORRFlagID[secorrIndex];
+        flagVal = psr[ipsr].TNSECORRFlagVal[secorrIndex];
+    }
+
+    const observation &obs = psr[ipsr].obsn[iobs];
+    bool hasSelector = false;
+    for (int iflag = 0; iflag < obs.nFlags; ++iflag) {
+        if (strcmp(obs.flagID[iflag], flagID) == 0
+                && strcmp(obs.flagVal[iflag], flagVal) == 0) {
+            hasSelector = true;
+            break;
+        }
+    }
+    if (!hasSelector) return false;
+
+    const double dt = 1.0 / SECDAY;
+    const double delta = (double)(obs.bat - psr[ipsr].obsn[epochObs].bat);
+    return std::fabs(delta) < dt;
+}
+
 double t2FitFunc_nestlike_jitter(pulsar *psr, int ipsr ,double x ,int ipos ,param_label label,int k){
-    const double dt=1./SECDAY;
-    const double epoch = psr[ipsr].obsn[k].bat;
-    const double batmin = epoch-dt;
-    const double batmax = epoch+dt;
-    const double bat = psr[ipsr].obsn[ipos].bat;
-    if (bat > batmin && bat < batmax) return 1;
-    else return 0;
-
-
+    return t2Fit_nestlike_jitterMatches(psr, ipsr, k, ipos) ? 1.0 : 0.0;
 }
 
 void t2UpdateFunc_nestlike_jitter(pulsar *psr, int ipsr ,param_label label,int k, double val, double err) {
     logmsg("%d %s %.2f %lg %lg",ipsr,label_str[label],(double)psr[ipsr].obsn[k].bat,val,err);
+    for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs) {
+        if (!t2Fit_nestlike_jitterMatches(psr, ipsr, k, iobs)) continue;
+        psr[ipsr].obsn[iobs].TNWhiteSignal += val;
+        psr[ipsr].obsn[iobs].TNWhiteErr += err * err;
+    }
 }
 
 

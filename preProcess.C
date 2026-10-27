@@ -429,7 +429,7 @@ void preProcess(pulsar *psr,int npsr,int argc,char **argv)
 	  {
 	    for(i=0;i<psr[p].nobs;i++)
 	      {
-		double tobsval;
+		double tobsval=1.0;
 		
 		for (int tf=0;tf<psr[p].obsn[i].nFlags;tf++){
 		  if(strcasecmp(psr[p].obsn[i].flagID[tf],"-tobs")==0){
