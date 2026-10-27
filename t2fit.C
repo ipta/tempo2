@@ -60,13 +60,14 @@ void t2fit_prefit(pulsar* psr, int npsr);
 #define T2_SVD_TOL 1e-27
 
 void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
-
+    t2fit_prefit(psr,npsr);
     if (strcmp(psr[0].fitFunc,"default")!=0){
         callFitFuncPlugin(psr,npsr,covarFuncFile);
+        t2fit_postfit(psr,npsr);
         return;
     }
 
-    t2fit_prefit(psr,npsr);
+    
 
     // if we have a model for the data covariance function, then use it.
     // Otherwise we we will just whiten using the error bars.
