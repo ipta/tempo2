@@ -51,8 +51,8 @@
 
 
 #define TEMPO2_h_HASH "$Id$"
-#define TEMPO2_h_VER "2026.09.1"
-#define TEMPO2_h_MAJOR_VER 2026.09
+#define TEMPO2_h_VER "2026.10.1"
+#define TEMPO2_h_MAJOR_VER 2026.10
 #define TEMPO2_h_MINOR_VER 1
 #define TSUN longdouble(4.925490947e-6) /*!< Solar constant for mass calculations. */
 #define MAX_FREQ_DERIVATIVES 13    /*!< F0 -> Fn   where n=10                            */
@@ -118,6 +118,7 @@
 #define PCM         3.08568025e16        /*!< one parsec in meters                       */
 #define MASYR2RADS  1.53628185004416045e-16 /*!< Converts from mas/yr to rad/s              */
 #define MAX_MSG     50                   /*!< Maximum number of different warnings       */
+#define ECORR_SAME_OBS_TIME_WINDOW_SECONDS 30.0 /* Assume same observation time window is 30 seconds */
 
 #define START_FINISH_DELTA longdouble(1e-11)
 
@@ -432,6 +433,8 @@ typedef struct observation {
     double      TNGroupErr;         /*!< Error on Model Group Noise signal from temponest fit */
   double TNChromSignal; // Model of Chromatic noise from temponest
   double TNChromErr; // Error on Chromatic noise from temponest
+  double TNWhiteSignal; // Model of White noise from temponest
+  double TNWhiteErr; // Error on White noise from temponest
     double      freq;               /*!< Frequency of observation (in MHz)                          */
     double      freqSSB;            /*!< Frequency of observation in barycentric frame (in Hz)      */
     double      toaErr;             /*!< Error on TOA (in us)                                       */
@@ -816,6 +819,7 @@ typedef struct pulsar {
     int TNsubtractRed;
     int TNsubtractChrom;
     int TNsubtractSWGP;
+    int TNsubtractWhite;
     int AverageResiduals; 
     int AverageDMResiduals;
     char AverageFlag[MAX_FLAG_LEN];

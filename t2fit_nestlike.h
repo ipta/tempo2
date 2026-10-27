@@ -84,7 +84,8 @@ void t2UpdateFunc_nestlike_swgp(pulsar *psr, int ipsr ,param_label label,int k, 
 
 double t2FitFunc_nestlike_jitter(pulsar *psr, int ipsr ,double x ,int ipos ,param_label label,int k);
 
-
+int t2Fit_nestlike_jitterSelector(pulsar *psr, int ipsr, int iobs);
+int t2fit_nestlike_get_jitter_group(pulsar *psr, int iobs, bool rebuild_cache);
 
 void t2UpdateFunc_nestlike_jitter(pulsar *psr, int ipsr ,param_label label,int k, double val, double err);
 

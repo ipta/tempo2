@@ -9,10 +9,12 @@
 
 #include "TKfit.h"
 #include <stdlib.h>
+#include <cstdlib>
 #include <string.h>
 #include <assert.h>
 #include <enum_str.h>
 #include <vector>
+#include <algorithm>
 
 
 
@@ -58,17 +60,20 @@ void t2fit_prefit(pulsar* psr, int npsr);
 #define T2_SVD_TOL 1e-27
 
 void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
+    
 
+    t2fit_prefit(psr,npsr);
     if (strcmp(psr[0].fitFunc,"default")!=0){
         callFitFuncPlugin(psr,npsr,covarFuncFile);
         return;
     }
 
-    t2fit_prefit(psr,npsr);
+    
 
     // if we have a model for the data covariance function, then use it.
     // Otherwise we we will just whiten using the error bars.
     bool haveCovar = (covarFuncFile!=NULL && strcmp(covarFuncFile,"NULL"));
+    
 
     for(unsigned p=0; p < npsr; ++p){
         if (psr[p].auto_constraints)autoConstraints(psr,p,npsr);
@@ -111,6 +116,13 @@ void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
      * to get the input data and design matricies etc.
      */
     for (size_t ipsr=0; ipsr < npsr; ipsr++) {
+        if (haveCovar){
+            // Need to sort ToAs for covariance function code. 
+            // Do this first so that everything later is ok!
+            for (int ipsr=0; ipsr < npsr; ipsr++){
+                sortToAs(psr+ipsr);
+            }
+        }
         double *psr_x   = (double*)malloc(sizeof(double)*psr[ipsr].nobs);
         double *psr_y   = (double*)malloc(sizeof(double)*psr[ipsr].nobs);
         double *psr_white_y   = (double*)malloc(sizeof(double)*psr[ipsr].nobs);
@@ -159,8 +171,7 @@ void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
          * a 1-d ndata array.
          */
         if (haveCovar) {
-            // ToAs must be sorted for covariance function code
-            sortToAs(psr+ipsr);
+            // The data must be sorted, but the sort now happens earlier to reduce chance of issues.
 
             // malloc_uinv does a blas-compatible allocation of a 2-d array.
             logdbg("Create cholesky_L array");
@@ -554,6 +565,8 @@ void t2fit_prefit(pulsar* psr, int npsr){
             psr[ipsr].obsn[iobs].SWGPErr = 0;
             psr[ipsr].obsn[iobs].TNChromSignal =0;
             psr[ipsr].obsn[iobs].TNChromErr = 0;
+            psr[ipsr].obsn[iobs].TNWhiteSignal = 0;
+            psr[ipsr].obsn[iobs].TNWhiteErr = 0;
         }
     }
 }
@@ -598,6 +611,12 @@ void t2fit_postfit(pulsar* psr, int npsr){
                 psr[ipsr].obsn[iobs].TNChromErr = sqrt(psr[ipsr].obsn[iobs].TNChromErr);
             }
             subtractTNPoly(psr, ipsr,param_cm);
+        }
+        // if there are any ECORR or SECORR parameters:
+        if ((psr[ipsr].nTNECORR > 0) || (psr[ipsr].nTNSECORR > 0)) {
+            for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs){
+                psr[ipsr].obsn[iobs].TNWhiteErr = sqrt(psr[ipsr].obsn[iobs].TNWhiteErr);
+            }
         }
     }
 }
@@ -1256,7 +1275,7 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
         }
 
 
-	   if (psr->TNDMAmp && psr->TNDMGam) {
+	    if (psr->TNDMAmp && psr->TNDMGam) {
             for (int i=0;i<psr->TNDMC;++i) {
                 /**
                  * Temporary fix here!
@@ -1320,139 +1339,63 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
 
 
 
-	// add in TN shapelet parameters
-
-
-        // ECORR parameters
-        // Fits for a constrained jump for each "epoch" (i.e. observation)
-        int nepochs=0;
-        if (psr->nTNECORR > 0) {
-
-	  const double dt = 1./SECDAY;
-            double xmin=0;
-            double xmax=0;
-            // flag observations that have been matched to an epoch already.
-            bool flag[psr_ndata];
-            for (int idata = 0; idata < psr_ndata; ++idata){
-                flag[idata]= false;
-            }
-
-            for (int idata = 0; idata < psr_ndata; ++idata){
+        // TN ECORR/TNSECORR epochs
+        if ((psr->nTNECORR > 0) || (psr->nTNSECORR > 0)) {
+            for (int idata = 0; idata < psr_ndata; ++idata) {
                 int iobs = psr_toaidx[idata];
-                // if this observation was in a previous epoch, then skip it.
-                if(flag[idata])continue;
-                // Here we check over all flags and ecorr params to see if it matches.
-                for (int iecorr=0; iecorr < psr->nTNECORR; iecorr++){
-                    for (int iflag=0;iflag < psr->obsn[iobs].nFlags; iflag++){
-                        if (
-                                (strcmp(psr->obsn[iobs].flagID[iflag],
-                                        psr->TNECORRFlagID[iecorr])==0)
-                                && (strcmp(psr->obsn[iobs].flagVal[iflag],
-                                        psr->TNECORRFlagVal[iecorr])==0)
-
-                           ) {
-                            xmin=psr_x[idata] - dt;
-                            xmax=psr_x[idata] + dt;
-                            // don't need to search any more on this epoch.
-                            flag[idata]=true;
-
-                            OUT.constraintIndex[OUT.nConstraints]=constraint_jitter;
-                            // we use the constraint counter to specify specific toa that represents this epoch
-                            OUT.constraintCounters[OUT.nConstraints]=iobs;
-                            OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
-                            ++OUT.nConstraints;
-
-                            OUT.paramIndex[OUT.nParams]=param_jitter;
-                            // we use the constraint counter to specify specific toa that represents this epoch
-                            OUT.paramCounters[OUT.nParams]=iobs;
-                            OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_jitter;
-                            OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_jitter;
-                            ++OUT.nParams;
-
-                            ++nepochs;
-                            break;
-                        }
-                        if(flag[idata])break;
-                    }
-                    if(flag[idata])break;
-                }
-                if (flag[idata]){
-                    for (int idata2 = idata; idata2 < psr_ndata; ++idata2){
-                        if(flag[idata2])continue;
-                        if(psr_x[idata2] > xmin && psr_x[idata2] < xmax){
-                            flag[idata2]=true;
-                        }
-                    }
+                if (t2Fit_nestlike_jitterSelector(psr, 0, iobs) == -2) {
+                    logerr("Overlapping TNECORR/TNSECORR selectors for observation %d", iobs);
+                    std::exit(EXIT_FAILURE);
                 }
             }
-            logmsg("Generated %d TNepochs from %d TNECORRs",nepochs,psr->nTNECORR);
-        }
 
-
-        nepochs=0;
-        if (psr->nTNSECORR > 0) {
-
-	  
-
-            const double dt = 1./SECDAY;
-            double xmin=0;
-            double xmax=0;
-            // flag observations that have been matched to an epoch already.
-            bool flag[psr_ndata];
-            for (int idata = 0; idata < psr_ndata; ++idata){
-                flag[idata]= false;
-            }
-
-            for (int idata = 0; idata < psr_ndata; ++idata){
+            // rebuild the cache.
+            t2fit_nestlike_get_jitter_group(psr,0,true);
+            std::vector<int> jitter_groups;
+            int tnepochs=0;
+            int tnsecorrEpochs=0;
+            for (int idata = 0; idata < psr_ndata; ++idata) {
                 int iobs = psr_toaidx[idata];
-                // if this observation was in a previous epoch, then skip it.
-                if(flag[idata])continue;
-                // Here we check over all flags and ecorr params to see if it matches.
-                for (int iecorr=0; iecorr < psr->nTNSECORR; iecorr++){
-                    for (int iflag=0;iflag < psr->obsn[iobs].nFlags; iflag++){
-                        if (
-                                (strcmp(psr->obsn[iobs].flagID[iflag],
-                                        psr->TNSECORRFlagID[iecorr])==0)
-                                && (strcmp(psr->obsn[iobs].flagVal[iflag],
-                                        psr->TNSECORRFlagVal[iecorr])==0)
+                int jitter_group = t2fit_nestlike_get_jitter_group(psr,iobs,false);
 
-                           ) {
-                            xmin=psr_x[idata] - dt;
-                            xmax=psr_x[idata] + dt;
-                            // don't need to search any more on this epoch.
-                            flag[idata]=true;
-
-                            OUT.constraintIndex[OUT.nConstraints]=constraint_jitter;
-                            // we use the constraint counter to specify specific toa that represents this epoch
-                            OUT.constraintCounters[OUT.nConstraints]=iobs;
-                            OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
-                            ++OUT.nConstraints;
-
-                            OUT.paramIndex[OUT.nParams]=param_jitter;
-                            // we use the constraint counter to specify specific toa that represents this epoch
-                            OUT.paramCounters[OUT.nParams]=iobs;
-                            OUT.paramDerivs[OUT.nParams]     =t2FitFunc_nestlike_jitter;
-                            OUT.updateFunctions[OUT.nParams] =t2UpdateFunc_nestlike_jitter;
-                            ++OUT.nParams;
-
-                            ++nepochs;
-                            break;
-                        }
-                        if(flag[idata])break;
-                    }
-                    if(flag[idata])break;
+                if (jitter_group < 0) {
+                    logdbg("Skipping iobs %d, no jitter group", iobs);
+                    continue;
                 }
-                if (flag[idata]){
-                    for (int idata2 = idata; idata2 < psr_ndata; ++idata2){
-                        if(flag[idata2])continue;
-                        if(psr_x[idata2] > xmin && psr_x[idata2] < xmax){
-                            flag[idata2]=true;
-                        }
-                    }
+                if (std::find(jitter_groups.begin(), jitter_groups.end(), jitter_group) != jitter_groups.end()) {
+                    logdbg("Skipping iobs %d, jitter group %d already processed", iobs, jitter_group);
+                    continue;
                 }
+                // a new jitter group, add it to the list of constraints and parameters
+                logdbg("Adding jitter group %d for iobs %d", jitter_group, iobs);
+                jitter_groups.push_back(jitter_group);
+                int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
+            
+                OUT.constraintValue[OUT.nConstraints] = 0;
+                OUT.constraintIndex[OUT.nConstraints] = constraint_jitter;
+                OUT.constraintCounters[OUT.nConstraints] = jitter_group;
+                OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
+                ++OUT.nConstraints;
+
+                OUT.paramIndex[OUT.nParams] = param_jitter;
+                OUT.paramCounters[OUT.nParams] = jitter_group;
+                OUT.paramDerivs[OUT.nParams] = t2FitFunc_nestlike_jitter;
+                OUT.updateFunctions[OUT.nParams] = t2UpdateFunc_nestlike_jitter;
+                ++OUT.nParams;
+                if (selector >= psr->nTNECORR) { 
+                    ++tnsecorrEpochs;
+                } else{
+                    ++tnepochs;
+                }  
+
             }
-            logmsg("Generated %d TNepochs from %d TNSECORRs",nepochs,psr->nTNSECORR);
+
+            if (psr->nTNECORR > 0)
+                logmsg("Generated %d TNepochs from %d TNECORRs", tnepochs, psr->nTNECORR);
+            if (psr->nTNSECORR > 0)
+                logmsg("Generated %d TNepochs from %d TNSECORRs", tnsecorrEpochs, psr->nTNSECORR);
         }
+        // TN Shapelet events
         for (unsigned ishape=0; ishape < psr->nTNShapeletEvents; ++ishape){
             if (psr->TNShapeletEvFitFlag[ishape]==1) {
                     // fit for the amplitudes of this shapelet
@@ -1460,6 +1403,7 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
                     psr->param[param_shapevent].paramSet[0]=1;
             }
         }
+    
         // end of TN stuff
     }
 

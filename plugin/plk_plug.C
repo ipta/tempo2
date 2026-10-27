@@ -277,8 +277,8 @@ void help(int plk_mode) /* Display help */
     printf("9         plot user value\n");
     printf("0         plot year\n");
     printf("-         plot elevation\n");
-    printf("K         subtract/add TN red noise\n");
-    printf("F         subtract/add TN DM Variations\n");
+    printf("K         subtract/add TN achromatic noise\n");
+    printf("F         subtract/add TN chromatic noise\n");
 
     printf("\nDisplay Options\n"); /* Determines HOW to display the things */
     printf("===============\n");
@@ -1701,16 +1701,17 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 
             }
             else if(key=='K'){
-                printf("youve presssed K!!!\n");
                 if(psr[0].TNsubtractRed==0){
-                    printf("Subtract red noise from fit\n");
+                    printf("Subtract Achromatic noise (TNRed and TNECORR)\n");
                     psr[0].TNsubtractRed=1;
+                    psr[0].TNsubtractWhite=1;
                     formResiduals(psr,npsr,1);
                     textOutput(psr,npsr,0,0,0,0,"");
                 }
                 else if(psr[0].TNsubtractRed==1){
-                    printf("Do Not Subtract Red Noise on next Fit \n");
+                    printf("will Re-add Achromatic noise (TNRed and TNECORR) \n");
                     psr[0].TNsubtractRed=0;
+                    psr[0].TNsubtractWhite=0;
                     formResiduals(psr,npsr,1);
                     textOutput(psr,npsr,0,0,0,0,"");
                 }

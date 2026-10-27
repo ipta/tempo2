@@ -800,7 +800,18 @@ void parseLine(pulsar *psr,char *line,double *errMult,char *null,char *format,ch
                             fprintf(fout,"%s",disp);
                             pos+=strlen(disp);
 			}
-			
+			if (strcasecmp(var, "tnwhite") ==0) /*temponest red noise max-like signal*/
+			{
+			    sprintf(disp,format,(longdouble)(psr[0].obsn[varN].TNWhiteSignal)); 
+                            fprintf(fout,"%s",disp);
+                            pos+=strlen(disp);
+			}
+			if (strcasecmp(var, "tnwhiteerr") ==0) /*temponest red noise make-like signal*/
+			{
+			    sprintf(disp,format,(longdouble)(psr[0].obsn[varN].TNWhiteErr)); 
+                            fprintf(fout,"%s",disp);
+                            pos+=strlen(disp);
+			}
 			if (strcasecmp(var, "tnchrom") ==0) /*temponest chromatic noise max-like signal*/
 			{
 			    sprintf(disp,format,(longdouble)(psr[0].obsn[varN].TNChromSignal)); 

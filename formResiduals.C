@@ -139,6 +139,10 @@ void averageDMResiduals(pulsar *psr, int npsr){
                     resid -= psr[0].obsn[o].TNChromSignal;
                 }
 
+                if (psr[0].TNsubtractWhite ==1)
+                {
+                    resid -= psr[0].obsn[o].TNWhiteSignal;
+                }
 
 
                 int bin = floor(((double)psr[0].obsn[o].bat-mintime)/timestep);
@@ -313,6 +317,11 @@ void averageResiduals(pulsar *psr, int npsr){
 		  {
 		    resid -= (double) psr[0].obsn[o].TNChromSignal;
 		  }
+
+        if (psr[0].TNsubtractWhite ==1)
+          {
+            resid -= (double) psr[0].obsn[o].TNWhiteSignal;
+          }
 
 		AverageRes[flagindex][bin] += resid/adjustedErr;
                 AverageBat[flagindex][bin] += (double)psr[0].obsn[o].bat/adjustedErr;
@@ -2405,7 +2414,12 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
 
 
 
-        if ((psr[p].TNsubtractDM ==1) || ( psr[p].TNsubtractRed ==1) || (psr[p].TNsubtractChrom ==1) || (psr[p].TNsubtractSWGP ==1))
+        if ((psr[p].TNsubtractDM ==1) || 
+                (psr[p].TNsubtractRed ==1) || 
+                (psr[p].TNsubtractChrom ==1) || 
+                (psr[p].TNsubtractSWGP ==1) || 
+                (psr[p].TNsubtractWhite ==1)   
+            )
         {
             for(i=0;i<=psr[p].nobs; i++)
             {
@@ -2434,6 +2448,11 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
                 if (psr[p].TNsubtractChrom ==1)
                 {
                     psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNChromSignal;
+                }
+
+                if (psr[p].TNsubtractWhite ==1)
+                {
+                    psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNWhiteSignal;
                 }
 
 
