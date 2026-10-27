@@ -527,7 +527,7 @@ bool t2Fit_nestlike_jitterMatches(pulsar *psr, int ipsr, int epochObs, int iobs)
     if (!hasSelector) return false;
 
     const double dt = 1.0 / SECDAY;
-    const double delta = (double)(obs.bat - psr[ipsr].obsn[epochObs].bat);
+    const double delta = (double)(obs.sat - psr[ipsr].obsn[epochObs].sat);
     return std::fabs(delta) < dt;
 }
 
