@@ -6,6 +6,7 @@
 #include "shapelet.h"
 #include "enum_str.h"
 
+#include <algorithm>
 #include <map>
 #include <tuple>
 #include <vector>
@@ -500,45 +501,71 @@ int t2Fit_nestlike_jitterSelector(pulsar *psr, int ipsr, int iobs) {
     return selector;
 }
 
-bool t2Fit_nestlike_jitterMatches(pulsar *psr, int ipsr, int epochObs, int iobs) {
-    const int selector = t2Fit_nestlike_jitterSelector(psr, ipsr, epochObs);
-    if (selector < 0) return false;
+/*
+What I want for the jitter matching:
 
-    const char *flagID;
-    const char *flagVal;
-    if (selector < psr[ipsr].nTNECORR) {
-        flagID = psr[ipsr].TNECORRFlagID[selector];
-        flagVal = psr[ipsr].TNECORRFlagVal[selector];
-    } else {
-        const int secorrIndex = selector - psr[ipsr].nTNECORR;
-        flagID = psr[ipsr].TNSECORRFlagID[secorrIndex];
-        flagVal = psr[ipsr].TNSECORRFlagVal[secorrIndex];
-    }
+ - a function that takes a pulsar, toa index and returns which jitter group it belongs to (or -1 if none)
+ - on first call this should cache the mapping so that subsequent calls are fast and deterministic.
+  - the cache should be invalidated when a new fit is run (and on first).
+ 
+  t2fit will call the initial build, passing a flag to indicate that the cache should be rebuilt, 
+ in this way t2fit will count the number of jitter groups and set up the design matrix number of parameters etc.
 
-    const observation &obs = psr[ipsr].obsn[iobs];
-    bool hasSelector = false;
-    for (int iflag = 0; iflag < obs.nFlags; ++iflag) {
-        if (strcmp(obs.flagID[iflag], flagID) == 0
-                && strcmp(obs.flagVal[iflag], flagVal) == 0) {
-            hasSelector = true;
-            break;
+ the dt in the jitter should act not as a hard cutoff, but as the size of gap that can exist before a new jitter group is needed.
+ So e.g. if we have a set of TOAs with the same flag, but they are separated by more than dt, then we should have two jitter groups for that flag.
+ */
+
+// psr must point to the individual pulsar (i.e. psr+ipsr when holding an array). It is used as the cache key.
+int t2fit_nestlike_get_jitter_group(pulsar *psr, int iobs, bool rebuild_cache) {
+    static std::map<const pulsar*, std::vector<int>> jitterGroupCache;
+
+    if (rebuild_cache) {
+        std::vector<int> &groups = jitterGroupCache[psr];
+        groups.assign(psr->nobs, -1);
+
+        // first find the selector id for each observation
+        std::map<int, std::vector<int>> selectorToObsIndices;
+        for (int obsIndex = 0; obsIndex < psr->nobs; ++obsIndex) {
+            int selector = t2Fit_nestlike_jitterSelector(psr, 0, obsIndex);
+            if (selector >= 0) selectorToObsIndices[selector].push_back(obsIndex);
+        }
+
+        // for each selector now find the groups based on time separation
+        int currentGroup = -1;
+        for (auto &[selector, obsIndices] : selectorToObsIndices) {
+            std::sort(obsIndices.begin(), obsIndices.end(), [&](int a, int b) {
+                return psr->obsn[a].sat < psr->obsn[b].sat;
+            });
+            double lastSat = 0;
+            bool first = true;
+            for (int obsIndex : obsIndices) {
+                double currentSat = psr->obsn[obsIndex].sat;
+                if (first || (currentSat - lastSat) > (ECORR_SAME_OBS_TIME_WINDOW_SECONDS / SECDAY)) {
+                    ++currentGroup; // start a new group (always at the start of a new selector)
+                }
+                first = false;
+                groups[obsIndex] = currentGroup;
+                lastSat = currentSat;
+            }
         }
     }
-    if (!hasSelector) return false;
-
-    const double dt = 1.0 / SECDAY;
-    const double delta = (double)(obs.sat - psr[ipsr].obsn[epochObs].sat);
-    return std::fabs(delta) < dt;
+    auto it = jitterGroupCache.find(psr);
+    if (it == jitterGroupCache.end() || iobs < 0 || iobs >= (int)it->second.size()) return -1;
+    return it->second[iobs];
 }
 
+
 double t2FitFunc_nestlike_jitter(pulsar *psr, int ipsr ,double x ,int ipos ,param_label label,int k){
-    return t2Fit_nestlike_jitterMatches(psr, ipsr, k, ipos) ? 1.0 : 0.0;
+    if (t2fit_nestlike_get_jitter_group(psr+ipsr, ipos, false) == k) {
+        return 1.0;
+    }
+    return 0.0;
 }
 
 void t2UpdateFunc_nestlike_jitter(pulsar *psr, int ipsr ,param_label label,int k, double val, double err) {
-    logmsg("%d %s %.2f %lg %lg",ipsr,label_str[label],(double)psr[ipsr].obsn[k].bat,val,err);
+    logmsg("%d %s %d %lg %lg",ipsr,label_str[label],k,val,err);
     for (int iobs = 0; iobs < psr[ipsr].nobs; ++iobs) {
-        if (!t2Fit_nestlike_jitterMatches(psr, ipsr, k, iobs)) continue;
+        if (t2fit_nestlike_get_jitter_group(psr+ipsr, iobs, false) != k) continue;
         psr[ipsr].obsn[iobs].TNWhiteSignal += val;
         psr[ipsr].obsn[iobs].TNWhiteErr += err * err;
     }

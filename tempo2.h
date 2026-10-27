@@ -118,6 +118,7 @@
 #define PCM         3.08568025e16        /*!< one parsec in meters                       */
 #define MASYR2RADS  1.53628185004416045e-16 /*!< Converts from mas/yr to rad/s              */
 #define MAX_MSG     50                   /*!< Maximum number of different warnings       */
+#define ECORR_SAME_OBS_TIME_WINDOW_SECONDS 30.0 /* Assume same observation time window is 30 seconds */
 
 #define START_FINISH_DELTA longdouble(1e-11)
 

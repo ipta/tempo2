@@ -235,9 +235,14 @@ double constraints_nestlike_jitter(pulsar *psr,int ipsr, int iconstraint,int ipa
 
     if (iparam != param_jitter || constraintk != k) return 0;
 
-    const int selector = t2Fit_nestlike_jitterSelector(psr, ipsr, k);
+    // k is a jitter group index; find a representative TOA in that group
+    int kobs = -1;
+    for (int i = 0; i < psr[ipsr].nobs; ++i) {
+        if (t2fit_nestlike_get_jitter_group(psr+ipsr, i, false) == k) { kobs = i; break; }
+    }
+    const int selector = (kobs < 0) ? -1 : t2Fit_nestlike_jitterSelector(psr, ipsr, kobs);
     if (selector < 0) {
-        logerr("No unique TNECORR/TNSECORR selector for jitter epoch at TOA %d", k);
+        logerr("No unique TNECORR/TNSECORR selector for jitter group %d", k);
         std::exit(EXIT_FAILURE);
     }
 
@@ -246,16 +251,16 @@ double constraints_nestlike_jitter(pulsar *psr,int ipsr, int iconstraint,int ipa
         ecorrval = psr[ipsr].TNECORRVal[selector];
     } else {
         const int secorrIndex = selector - psr[ipsr].nTNECORR;
-        const double tobsval = psr[ipsr].obsn[k].tobs;
+        const double tobsval = psr[ipsr].obsn[kobs].tobs;
         if (!std::isfinite(tobsval) || tobsval <= 0.0) {
-            logerr("Invalid -tobs value for TNSECORR jitter epoch at TOA %d: %g", k, tobsval);
+            logerr("Invalid -tobs value for TNSECORR jitter group %d: %g", k, tobsval);
             std::exit(EXIT_FAILURE);
         }
         ecorrval = psr[ipsr].TNSECORRVal[secorrIndex] / sqrt(tobsval / 3600.0);
     }
 
     if (!std::isfinite(ecorrval) || ecorrval <= 0.0) {
-        logerr("Invalid TNECORR/TNSECORR value for jitter epoch at TOA %d: %g", k, ecorrval);
+        logerr("Invalid TNECORR/TNSECORR value for jitter group %d: %g", k, ecorrval);
         std::exit(EXIT_FAILURE);
     }
 

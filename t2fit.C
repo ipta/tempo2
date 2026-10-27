@@ -14,6 +14,7 @@
 #include <assert.h>
 #include <enum_str.h>
 #include <vector>
+#include <algorithm>
 
 
 
@@ -1331,55 +1332,45 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
 
         // TN ECORR/TNSECORR epochs
         if ((psr->nTNECORR > 0) || (psr->nTNSECORR > 0)) {
-            // Build one constrained jitter offset for each unambiguous ECORR epoch.
-            // The same matcher is used later when constructing the design matrix.
-            std::vector<char> jitterAssigned(psr_ndata, 0);
-            int tnepochs = 0;
-            int tnsecorrEpochs = 0;
+            // rebuild the cache.
+            t2fit_nestlike_get_jitter_group(psr,0,true);
+            std::vector<int> jitter_groups;
+            int tnepochs=0;
+            int tnsecorrEpochs=0;
+            for (int idata = 0; idata < psr->nobs; ++idata) {
+                int iobs = psr_toaidx[idata];
+                int jitter_group = t2fit_nestlike_get_jitter_group(psr,iobs,false);
 
-            for (int idata = 0; idata < psr_ndata; ++idata) {
-                const int iobs = psr_toaidx[idata];
-                const int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
-                if (selector == -2) {
-                    logerr("TOA %d matches multiple TNECORR/TNSECORR selectors", iobs);
-                    std::exit(EXIT_FAILURE);
+                if (jitter_group < 0) {
+                    logdbg("Skipping iobs %d, no jitter group", iobs);
+                    continue;
                 }
-            }
-        
+                if (std::find(jitter_groups.begin(), jitter_groups.end(), jitter_group) != jitter_groups.end()) {
+                    logdbg("Skipping iobs %d, jitter group %d already processed", iobs, jitter_group);
+                    continue;
+                }
+                // a new jitter group, add it to the list of constraints and parameters
+                logdbg("Adding jitter group %d for iobs %d", jitter_group, iobs);
+                jitter_groups.push_back(jitter_group);
+                int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
             
-            for (int idata = 0; idata < psr_ndata; ++idata) {
-                if (jitterAssigned[idata]) continue;
-
-                const int iobs = psr_toaidx[idata];
-                const int selector = t2Fit_nestlike_jitterSelector(psr, 0, iobs);
-                if (selector < 0) continue;
-
-                std::vector<int> epochMembers;
-                for (int idata2 = 0; idata2 < psr_ndata; ++idata2) {
-                    if (t2Fit_nestlike_jitterMatches(psr, 0, iobs, psr_toaidx[idata2])) {
-                        if (jitterAssigned[idata2]) {
-                            logerr("Overlapping ECORR epochs include TOA %d more than once",
-                                    psr_toaidx[idata2]);
-                            std::exit(EXIT_FAILURE);
-                        }
-                        epochMembers.push_back(idata2);
-                    }
-                }
-
+                OUT.constraintValue[OUT.nConstraints] = 0;
                 OUT.constraintIndex[OUT.nConstraints] = constraint_jitter;
-                OUT.constraintCounters[OUT.nConstraints] = iobs;
+                OUT.constraintCounters[OUT.nConstraints] = jitter_group;
                 OUT.constraintDerivs[OUT.nConstraints] = constraints_nestlike_jitter;
                 ++OUT.nConstraints;
 
                 OUT.paramIndex[OUT.nParams] = param_jitter;
-                OUT.paramCounters[OUT.nParams] = iobs;
+                OUT.paramCounters[OUT.nParams] = jitter_group;
                 OUT.paramDerivs[OUT.nParams] = t2FitFunc_nestlike_jitter;
                 OUT.updateFunctions[OUT.nParams] = t2UpdateFunc_nestlike_jitter;
                 ++OUT.nParams;
+                if (selector >= psr->nTNECORR) { 
+                    ++tnsecorrEpochs;
+                } else{
+                    ++tnepochs;
+                }  
 
-                for (int member : epochMembers) jitterAssigned[member] = 1;
-                if (selector < psr->nTNECORR) ++tnepochs;
-                else ++tnsecorrEpochs;
             }
 
             if (psr->nTNECORR > 0)
