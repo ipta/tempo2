@@ -60,6 +60,8 @@ void t2fit_prefit(pulsar* psr, int npsr);
 #define T2_SVD_TOL 1e-27
 
 void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
+    
+
     t2fit_prefit(psr,npsr);
     if (strcmp(psr[0].fitFunc,"default")!=0){
         callFitFuncPlugin(psr,npsr,covarFuncFile);
@@ -71,6 +73,7 @@ void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
     // if we have a model for the data covariance function, then use it.
     // Otherwise we we will just whiten using the error bars.
     bool haveCovar = (covarFuncFile!=NULL && strcmp(covarFuncFile,"NULL"));
+    
 
     for(unsigned p=0; p < npsr; ++p){
         if (psr[p].auto_constraints)autoConstraints(psr,p,npsr);
@@ -113,6 +116,13 @@ void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
      * to get the input data and design matricies etc.
      */
     for (size_t ipsr=0; ipsr < npsr; ipsr++) {
+        if (haveCovar){
+            // Need to sort ToAs for covariance function code. 
+            // Do this first so that everything later is ok!
+            for (int ipsr=0; ipsr < npsr; ipsr++){
+                sortToAs(psr+ipsr);
+            }
+        }
         double *psr_x   = (double*)malloc(sizeof(double)*psr[ipsr].nobs);
         double *psr_y   = (double*)malloc(sizeof(double)*psr[ipsr].nobs);
         double *psr_white_y   = (double*)malloc(sizeof(double)*psr[ipsr].nobs);
@@ -161,8 +171,7 @@ void t2Fit(pulsar *psr,unsigned int npsr, const char *covarFuncFile){
          * a 1-d ndata array.
          */
         if (haveCovar) {
-            // ToAs must be sorted for covariance function code
-            sortToAs(psr+ipsr);
+            // The data must be sorted, but the sort now happens earlier to reduce chance of issues.
 
             // malloc_uinv does a blas-compatible allocation of a 2-d array.
             logdbg("Create cholesky_L array");
@@ -1332,13 +1341,15 @@ void t2Fit_fillFitInfo(pulsar* psr, FitInfo &OUT, const FitInfo &globals, const 
 
         // TN ECORR/TNSECORR epochs
         if ((psr->nTNECORR > 0) || (psr->nTNSECORR > 0)) {
-            // rebuild the cache.
-            for (int iobs = 0; iobs < psr->nobs; ++iobs) {
+            for (int idata = 0; idata < psr_ndata; ++idata) {
+                int iobs = psr_toaidx[idata];
                 if (t2Fit_nestlike_jitterSelector(psr, 0, iobs) == -2) {
                     logerr("Overlapping TNECORR/TNSECORR selectors for observation %d", iobs);
                     std::exit(EXIT_FAILURE);
                 }
             }
+
+            // rebuild the cache.
             t2fit_nestlike_get_jitter_group(psr,0,true);
             std::vector<int> jitter_groups;
             int tnepochs=0;
