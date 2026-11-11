@@ -734,6 +734,17 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 readValue(psr,str,fin,&(psr->param[param_nudot_amp]),gval-1);
         }
     }
+    else if (strstr(str,"NUDOT_AMP")!=NULL){
+        // One amp for all, assume that Nudot epoch was already loaded
+        readValue(psr,str,fin,&(psr->param[param_nudot_amp]),0);
+        double sign=1.0;
+        for (int tmpi=0; tmpi<psr->param[param_nudot_amp].aSize; tmpi++){
+            psr->param[param_nudot_amp].val[tmpi] = sign* psr->param[param_nudot_amp].val[0];
+            psr->param[param_nudot_amp].prefit[tmpi] =  psr->param[param_nudot_amp].val[tmpi];
+            psr->param[param_nudot_amp].fitFlag[tmpi] = 0;
+            sign*=-1;
+        }
+    }
     else if (strstr(str,"NUDOT_TIME_")!=NULL){
         if (sscanf(str+11,"%d",&gval)==1)
         {
@@ -744,8 +755,13 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
     else if (strstr(str,"NUDOT_EPOCH_")!=NULL){
         if (sscanf(str+12,"%d",&gval)==1)
         {
-            if (gval<psr->param[param_nudot_epoch].aSize)
+            if (gval<psr->param[param_nudot_epoch].aSize){
                 readValue(psr,str,fin,&(psr->param[param_nudot_epoch]),gval-1);
+                for (int tmpi=0; tmpi<gval; tmpi++){
+                    // mark the corresponding amplituide as set so that it gets used if we had a single NUDOT_AMP parameter for all epochs
+                    psr->param[param_nudot_amp].paramSet[tmpi] = 1;                    
+                }
+            }
         }
     }
     else if  (strstr(str,"EXPEP_")!=NULL || strstr(str,"expep_")!=NULL)
