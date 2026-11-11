@@ -53,8 +53,18 @@ void * DLL_FUNC jpl_init_ephemeris( const char *ephemeris_filename,
 void DLL_FUNC jpl_close_ephemeris( void *ephem);
 int DLL_FUNC jpl_state( void *ephem, const double et, const int list[14],
                           double pv[][6], double nut[4], const int bary);
+int DLL_FUNC jpl_state_split( void *ephem, const double et0, const double et1,
+                          const int list[14], double pv[][6], double nut[4],
+                          const int bary);
 int DLL_FUNC jpl_pleph( void *ephem, const double et, const int ntarg,
                       const int ncent, double rrd[], const int calc_velocity);
+/* The epoch is et0+et1, for any split. Best precision comes from et0 an
+   integer Julian day and et1 the fraction of a day. The two halves stay apart through the record
+   lookup so the float64 step of a full Julian date never enters the
+   Chebyshev argument. */
+int DLL_FUNC jpl_pleph_split( void *ephem, const double et0, const double et1,
+                      const int ntarg, const int ncent, double rrd[],
+                      const int calc_velocity);
 double DLL_FUNC jpl_get_double( const void *ephem, const int value);
 long DLL_FUNC jpl_get_long( const void *ephem, const int value);
 int DLL_FUNC make_sub_ephem( void *ephem, const char *sub_filename,
