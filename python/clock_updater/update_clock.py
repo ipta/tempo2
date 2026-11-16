@@ -28,7 +28,7 @@ heading_re = re.compile(r"^ *\d+ - \S.*$")
 # A summary file containing C0 and C0' as well as corrected errata, from 2011 to recently
 # Is this updated regularly? Maybe when each Circular T is released? Last MJD 59699, same
 # as current last Circular T.
-utcgnss_url = "https://webtai.bipm.org/ftp/pub/tai/other-products/utcgnss/utc-gnss"
+utcgnss_url = "https://webtai.bipm.org/ftp/pub/tai/other-products/utcgnss/utc-gps"
 
 # Yearly tables 1993 to 2003 containing C0
 utcgps_old = "ftp://ftp2.bipm.org/pub/tai/scale/UTCGPS/utcgps{}.ar"
@@ -55,7 +55,7 @@ def read_recent_gps_corrections():
         The shape will be n by 3, with the columns MJD, C0, C0'; the last two
         are in nanoseconds.
     """
-    cols = (0, 1, 4)
+    cols = (0, 2,1)
     r = np.loadtxt(
         astropy.utils.data.download_file(utcgnss_url, cache=True), usecols=cols
     )
@@ -200,7 +200,7 @@ def get_gps_c0p():
     a = read_recent_gps_corrections()
     mjds = a[:, 0]
     c0ps = a[:, 2]
-    hdrline = "# UTC(GPS_UNSO) UTC"
+    hdrline = "# UTC(GPS_USNO) UTC"
     leading_comment = dedent(
         """\
         # Corrections from the GPS predictions of UTC to UTC.
@@ -225,7 +225,7 @@ def get_gps_c0p():
         mjd=mjds,
         clock=c0ps * u.ns,
         comments=comments,
-        filename="gps_unso2utc.clk",
+        filename="gps_usno2utc.clk",
     )
     c.leading_comment = leading_comment
     c.header = hdrline
@@ -325,7 +325,7 @@ def get_ttbipmxy_corrections_clock(year, include_forecast=1000):
     c.header = f"# TAI TT(BIPM{year})"
     return c
 
-for year in [2022,2023]:
+for year in [2025]:
     comment, mjd, corr, extra, extra_corr = get_ttbipmxy_corrections(year)
     with open(f"tai2tt_bipm{year}.clk","w") as f:
         f.write(f"# TAI TT(BIPM{year})\n")
@@ -335,7 +335,7 @@ for year in [2022,2023]:
         for m, c in zip(extra,extra_corr):
             f.write(f"{m:.6f} {c:.10f}\n")
 c = get_gps_c0p()
-c.write_tempo2_clock_file('gps_unso2utc.clk')
+c.write_tempo2_clock_file('gps_usno2utc.clk')
 
 c0 = get_gps_c0()
 c0.write_tempo2_clock_file('gpst2utc.clk')
