@@ -49,6 +49,7 @@ struct jpl_eph_data {
     uint32_t curr_cache_loc;
     double pvsun[9];
     double pvsun_t;
+    double pvsun_t1;
     double *cache;
     struct interpolation_info iinfo;
     FILE *ifile;

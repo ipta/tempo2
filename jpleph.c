@@ -135,6 +135,12 @@ long DLL_FUNC jpl_get_long( const void *ephem, const int value)
 int DLL_FUNC jpl_pleph( void *ephem, const double et, const int ntarg,
         const int ncent, double rrd[], const int calc_velocity)
 {
+    return jpl_pleph_split( ephem, et, 0.0, ntarg, ncent, rrd, calc_velocity);
+}
+
+int DLL_FUNC jpl_pleph_split( void *ephem, const double et0, const double et1,
+        const int ntarg, const int ncent, double rrd[], const int calc_velocity)
+{
     struct jpl_eph_data *eph = (struct jpl_eph_data *)ephem;
     double pv[13][6];/* pv is the position/velocity array
                         NUMBERED FROM ZERO: 0=Mercury,1=Venus,...
@@ -174,7 +180,7 @@ int DLL_FUNC jpl_pleph( void *ephem, const double et, const int ntarg,
             if( eph->ipt[i + 11][1] > 0) /* quantity is in ephemeris */
             {
                 list[i + 10] = list_val;
-                rval = jpl_state( ephem, et, list, pv, rrd, 0);
+                rval = jpl_state_split( ephem, et0, et1, list, pv, rrd, 0);
             }
             else          /*  quantity doesn't exist in the ephemeris file  */
                 rval = JPL_EPH_QUANTITY_NOT_IN_EPHEMERIS;
@@ -200,7 +206,7 @@ int DLL_FUNC jpl_pleph( void *ephem, const double et, const int ntarg,
 
     /*   make call to state   */
 
-    rval = jpl_state( eph, et, list, pv, rrd, 1);
+    rval = jpl_state_split( eph, et0, et1, list, pv, rrd, 1);
     /* Solar System barycentric Sun state goes to pv[10][] */
     if( ntarg == 11 || ncent == 11)
         for( i = 0; i < 6; i++)
@@ -564,24 +570,38 @@ static int dimension( const int idx)
 int DLL_FUNC jpl_state( void *ephem, const double et, const int list[14],
         double pv[][6], double nut[4], const int bary)
 {
+    return jpl_state_split( ephem, et, 0.0, list, pv, nut, bary);
+}
+
+int DLL_FUNC jpl_state_split( void *ephem, const double et0, const double et1,
+        const int list[14], double pv[][6], double nut[4], const int bary)
+{
     struct jpl_eph_data *eph = (struct jpl_eph_data *)ephem;
     unsigned i, j, n_intervals;
     uint32_t nr;
     double *buf = eph->cache;
     double t[2];
-    const double block_loc = (et - eph->ephem_start) / eph->ephem_step;
+    double whole, frac, whole1, frac1;
+    const double et_range = et0 + et1;
     boolean recompute_pvsun;
     const double aufac = 1.0 / eph->au;
 
     /*   error return for epoch out of range  */
-    if( et < eph->ephem_start || et > eph->ephem_end)
+    if( et_range < eph->ephem_start || et_range > eph->ephem_end)
         return( JPL_EPH_OUTSIDE_RANGE);
 
-    /*   calculate record # and relative time in interval   */
-
-    nr = (uint32_t)block_loc;
-    t[0] = block_loc - (double)nr;
-    if( !t[0] && nr)
+    /* Reduce et0 and et1 to record units separately, so the float64 step
+       of a full JD never enters the Chebyshev argument. With et0 an
+       integer JD and a power-of-two ephem_step, the et0 quotient is
+       exact. et1 may be any offset from et0, not only a day fraction. */
+    frac = modf( (et0 - eph->ephem_start) / eph->ephem_step, &whole);
+    frac1 = modf( et1 / eph->ephem_step, &whole1);
+    frac += frac1;
+    whole += whole1 + floor( frac);
+    frac -= floor( frac);
+    nr = (uint32_t)whole;
+    t[0] = frac;
+    if( t[0] == 0.0 && nr)
     {
         t[0] = 1.;
         nr--;
@@ -603,10 +623,11 @@ int DLL_FUNC jpl_state( void *ephem, const double et, const int list[14],
     }
     t[1] = eph->ephem_step;
 
-    if( eph->pvsun_t != et)   /* If several calls are made for the same et, */
+    if( eph->pvsun_t != et0 || eph->pvsun_t1 != et1)
     {                      /* don't recompute pvsun each time... only on */
         recompute_pvsun = true;   /* the first run through.                     */
-        eph->pvsun_t = et;
+        eph->pvsun_t = et0;
+        eph->pvsun_t1 = et1;
     }
     else
         recompute_pvsun = false;
@@ -830,6 +851,7 @@ void * DLL_FUNC jpl_init_ephemeris( const char *ephemeris_filename,
     rval->iinfo.vel_coeff[0] = 0.0;
     rval->iinfo.vel_coeff[1] = 1.0;
     rval->curr_cache_loc = (uint32_t)-1;
+    rval->pvsun_t = rval->pvsun_t1 = -1e30;
     /* The 'cache' data is right after the 'jpl_eph_data' struct: */
     rval->cache = (double *)( rval + 1);
     /* If there are more than 400 constants,  the names of       */
