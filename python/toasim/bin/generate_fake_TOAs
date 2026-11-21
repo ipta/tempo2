@@ -57,7 +57,7 @@ mv sim.tim.sim ${fpsr}_ideal.tim
 
 rm sim.tim
 
-echo "tempo2 -gr plk -f $par ${fpsr}_ideal.tim"
+echo "tempo2 -gr gplk -f $par ${fpsr}_ideal.tim"
 
 echo "Now go ahead and create some perturbations"
 

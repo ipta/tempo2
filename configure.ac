@@ -129,6 +129,7 @@ fi
 LT_LIB_DLLOAD
 
 SWIN_LIB_PGPLOT
+TEMPO2_LIB_GIZA
 SWIN_LIB_FFTW
 SWIN_LIB_CFITSIO
 
@@ -228,6 +229,12 @@ AC_MSG_NOTICE(Global linking flags are $LDFLAGS)
 
 
 # User warnings
+if test X$have_giza = Xyes; then
+    AC_MSG_NOTICE([gplk: native Giza backend ($GIZA_CFLAGS $GIZA_LIBS)])
+else
+    AC_MSG_NOTICE([gplk: native Giza was not found or was disabled - gplk will not be compiled])
+fi
+
 if test X$have_pgplot != Xyes; then
     AC_MSG_NOTICE(Plugins: PGPLOT was not detected - plugins requiring pgplot will not be compiled) 
 else

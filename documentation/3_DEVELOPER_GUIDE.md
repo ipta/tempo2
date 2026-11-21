@@ -24,6 +24,10 @@ As a general rule, we try to minimise the libraries needed to build the core of 
 ### plugins
 For plugins, the rules are much less strict. Currently we compile plugins with links to cfitsio, fftw and pgplot as part of the main plugin distribution.
 
+The native Giza `gplk` plugin has a separate
+[maintainer guide](GPLK_GIZA_DEVELOPER_GUIDE.md) covering its source layout,
+rendering/state rules, units, extension points, build and verification.
+
 ### libt2toolkit
 \ref MJK is attempting to introduce a little more rigour in the coding standards for the code that makes up libt2toolkit, but in general this is treated exactly the same as code temo2.
 

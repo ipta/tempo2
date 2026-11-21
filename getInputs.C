@@ -75,7 +75,7 @@ void getInputs(pulsar *psr,int argc, char *argv[],char timFile[][MAX_FILELEN],
             printf("%s\n\n",PACKAGE_STRING);
             printf("examples: %s mytim.tim\n",argv[0]);
             printf("          %s -f mypar.par mytim.tim\n",argv[0]);
-            printf("          %s -gr plk -f mypar.par mytim.tim\n",argv[0]);
+            printf("          %s -gr gplk -f mypar.par mytim.tim\n",argv[0]);
             printf("\n");
             printf("%s\n",help_txt);
             printf("Current Environment:\n");

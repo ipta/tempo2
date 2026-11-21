@@ -33,7 +33,11 @@ The basic usage of tempo2 is to feed in a `.par` and a `.tim` file, form residua
 This will write out `new.par` file with the updated parameters, as well as printing to the console the pre and post-fit parameters. Note any warnings that are printed. One of the side-effects of tempo2 is that it sometimes prints a lot of warnings, some you can ignore and some that you can't, so you have to read them!
 
 
-If you compiled the `pgplot` plugins, you can run the graphical interface `plk`
+If you compiled the native Giza plugin, run the graphical interface `gplk`:
+
+    tempo2 -gr gplk -f example1.par example1.tim
+
+If you compiled the `pgplot` plugins, the original interface is available as `plk`:
 
     tempo2 -gr plk -f example1.par example1.tim
 
