@@ -27,7 +27,7 @@
 #ifndef TABULATEDFUNCTION_H
 #define TABULATEDFUNCTION_H
 
-#include "dynarr.h"
+#include <vector>
 
 // redwards general ASCII table handling routines for tempo2
 
@@ -41,7 +41,7 @@ typedef struct
 {
     char fileName[256];
     char header_line[256];
-    DynamicArray samples; 
+    std::vector<TabulatedFunctionSample> samples;
 } TabulatedFunction;
 
 extern void TabulatedFunction_load(TabulatedFunction *func, char *fileName);

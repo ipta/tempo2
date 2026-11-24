@@ -77,13 +77,13 @@ void clock_corrections(pulsar *psr,int npsr)
 	const char *CVS_verNum = "$Id$";
 	if (displayCVSversion == 1) CVSdisplayVersion((char *)"global.C",(char *)"clock_corrections()",CVS_verNum);
 
-	logdbg("Calling toa2utc");
+	logtchk("Calling toa2utc");
 	toa2utc(psr,npsr);        /* 1. UTC(Observatory) -> UTC(NIST) */
-	logdbg("Calling tai2ut1");
+	logtchk("Calling tai2ut1");
 	//   utc2tai(psr,npsr);     /* 2. UTC(NIST) -> TAI              */
 	tai2ut1(psr,npsr);        /* 3. TAI -> UT1                    */
 	//   tai2tt(psr,npsr);      /* 4. TAI -> TT                     */
-	logdbg("Calling tt2tb");
+	logtchk("Calling tt2tb");
 	//tt2tb(psr,npsr);          /* 5. Rough estimate of TT-TB (+-2.2 microsec) */
 	if(psr[0].useCalceph ==0)
 	{
@@ -97,7 +97,7 @@ void clock_corrections(pulsar *psr,int npsr)
 	}
 
 
-	logdbg("Done clock corrections");
+	logtchk("Done clock corrections");
 }
 
 void ephemeris_routines(pulsar *psr,int npsr)

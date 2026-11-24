@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT([Tempo2],[2025.01.2],[mkeith@pulsarastronomy.net],[],[http://www.bitbucket.org/psrsoft/tempo2])
+AC_INIT([Tempo2],[2026.10.1],[mkeith@pulsarastronomy.net],[],[https://github.com/ipta/tempo2/])
 
 AC_ARG_VAR([TEMPO2], [Default TEMPO2 installation directory])
 AC_PREFIX_DEFAULT([${TEMPO2:-"/usr/local"}])
@@ -133,13 +133,61 @@ TEMPO2_LIB_GIZA
 SWIN_LIB_FFTW
 SWIN_LIB_CFITSIO
 
+AC_ARG_ENABLE([openmp],
+              AS_HELP_STRING([--disable-openmp], [Disable OpenMP support]),
+              [],
+              [enable_openmp=yes])
+
 # Check for openmp (optional package)
-AX_OPENMP([have_openmp=yes],[have_openmp=no])
-if test X$have_openmp == Xyes; then
-    CFLAGS="$CFLAGS $OPENMP_CFLAGS -DHAVE_OPENMP"
-    CXXFLAGS="$CXXFLAGS $OPENMP_CXXFLAGS -DHAVE_OPENMP"
-    LDFLAGS="$LDFLAGS $OPENMP_CXXFLAGS"
+if test "x$enable_openmp" = "xyes"; then
+    AX_OPENMP([have_openmp=yes],[have_openmp=no])
+else
+    have_openmp=no
 fi
+TEMPO2_OPENMP_CXXFLAGS=""
+TEMPO2_OPENMP_LIBS=""
+if test X$have_openmp == Xyes; then
+    TEMPO2_OPENMP_CXXFLAGS="$OPENMP_CXXFLAGS -DHAVE_OPENMP"
+    TEMPO2_OPENMP_LIBS="$OPENMP_CXXFLAGS"
+fi
+
+AC_SUBST(TEMPO2_OPENMP_CXXFLAGS)
+AC_SUBST(TEMPO2_OPENMP_LIBS)
+AM_CONDITIONAL(HAVE_OPENMP, [test x$have_openmp = xyes])
+
+build_tests=yes
+is_darwin=no
+is_clang=no
+if test "x`uname -s 2>/dev/null`" = "xDarwin"; then
+    is_darwin=yes
+fi
+case "$CXX" in
+    *clang*)
+        is_clang=yes
+        ;;
+esac
+
+if test "x$have_openmp" = "xyes" && test "x$is_darwin" = "xyes" && test "x$is_clang" != "xyes"; then
+    build_tests=no
+    AC_MSG_NOTICE([Disabling tests: macOS + OpenMP + non-clang compiler detected])
+fi
+
+AM_CONDITIONAL(BUILD_TESTS, [test "x$build_tests" = "xyes"])
+
+# Determine compiler to use for test builds.
+# On macOS with SDK 26+, force clang to avoid GCC/SDK incompatibilities.
+TEST_CC="$CC"
+TEST_CXX="$CXX"
+if test "x$is_darwin" = "xyes"; then
+    macos_sdk_major=$(xcrun --sdk macosx --show-sdk-version 2>/dev/null | sed 's/\..*//')
+    if test -n "$macos_sdk_major" && test "$macos_sdk_major" -ge 26 2>/dev/null; then
+        TEST_CC="clang"
+        TEST_CXX="clang++"
+        AC_MSG_NOTICE([Using clang for test builds: macOS SDK $macos_sdk_major detected])
+    fi
+fi
+AC_SUBST(TEST_CC)
+AC_SUBST(TEST_CXX)
 
 
 
@@ -199,12 +247,17 @@ AC_SUBST(T2ARCH)
 AC_CHECK_PROG(have_doxygen,[doxygen], [yes],[no])
 AM_CONDITIONAL(HAVE_DOXYGEN, [test x"$have_doxygen" = xyes])
 
-AC_ARG_ENABLE([default-qrfit],AS_HELP_STRING([--enable-default-qrfit],[Use QR fit by default]))
+AC_ARG_ENABLE(
+  [default-qrfit],
+  AS_HELP_STRING([--disable-default-qrfit],[Do not use QRfit by default]),
+  [],
+  [enable_default_qrfit=yes]
+)
 AS_IF([test "x$enable_default_qrfit" = "xyes"], [
        AC_MSG_NOTICE([Use QR fitter by default if avaliable])
        AC_DEFINE([QR_DEFAULT],[],[Use QR fitting by default])
        ],[
-       AC_MSG_NOTICE([Use SVD fitter by default])
+       AC_MSG_NOTICE([Use SVD fitter by default (rather than QRfit)])
        ])
 
 

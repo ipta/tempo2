@@ -29,4 +29,8 @@ export CFLAGS
 export CXXFLAGS
 export LDFLAGS
 
+if [[ "$(uname -s)" == "Darwin" ]] ; then
+    xtra_flags="$xtra_flags --disable-openmp"
+fi
+
 ./configure $xtra_flags --prefix=$PREFIX --enable-default-qrfit $2 $3 $4 $5 $6

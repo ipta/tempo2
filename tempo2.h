@@ -44,14 +44,15 @@
 // std includes
 #include <stdio.h>
 #include <time.h>
+#include <inttypes.h>
 // TK includes
 #include "TKlongdouble.h"
 #include "TKlog.h"
 
 
 #define TEMPO2_h_HASH "$Id$"
-#define TEMPO2_h_VER "2025.02.1"
-#define TEMPO2_h_MAJOR_VER 2025.02
+#define TEMPO2_h_VER "2026.10.1"
+#define TEMPO2_h_MAJOR_VER 2026.10
 #define TEMPO2_h_MINOR_VER 1
 #define TSUN longdouble(4.925490947e-6) /*!< Solar constant for mass calculations. */
 #define MAX_FREQ_DERIVATIVES 13    /*!< F0 -> Fn   where n=10                            */
@@ -115,8 +116,9 @@
 #define DM_CONST    2.41e-4
 #define DM_CONST_SI 7.436e6              /*!< Dispersion constant in SI units            */
 #define PCM         3.08568025e16        /*!< one parsec in meters                       */
-#define MASYR2RADS  1.53628185e-16       /*!< Converts from mas/yr to rad/s              */
+#define MASYR2RADS  1.53628185004416045e-16 /*!< Converts from mas/yr to rad/s              */
 #define MAX_MSG     50                   /*!< Maximum number of different warnings       */
+#define ECORR_SAME_OBS_TIME_WINDOW_SECONDS 30.0 /* Assume same observation time window is 30 seconds */
 
 #define START_FINISH_DELTA longdouble(1e-11)
 
@@ -189,6 +191,7 @@ enum label {
     param_tel_vx,param_tel_vy,param_tel_vz,param_tel_x0,param_tel_y0,param_tel_z0,param_gwm_amp,param_gwcs_amp,param_gwecc,param_gwb_amp,
     param_dm_sin1yr,param_dm_cos1yr,param_brake,param_stateSwitchT,param_df1,
     param_red_sin, param_red_cos,param_jitter,param_red_dm_sin, param_red_dm_cos, param_red_chrom_sin, param_red_chrom_cos,
+    param_swgp_sin, param_swgp_cos,
     param_band_red_sin, param_band_red_cos,param_sx, param_sxr1, param_sxr2, param_sxer,
     param_group_red_sin, param_group_red_cos,
     param_ne_sw,
@@ -271,6 +274,8 @@ enum constraint {
     constraint_red_dm_cos,
     constraint_red_chrom_sin,
     constraint_red_chrom_cos,
+    constraint_swgp_sin,
+    constraint_swgp_cos,
     constraint_group_red_sin,
     constraint_group_red_cos,
     constraint_jitter,
@@ -422,10 +427,14 @@ typedef struct observation {
     double      TNRedErr;		  /*!< Error on Model red noise signal from temponest fit */
     double      TNDMSignal;         /*!< Model DM signal from temponest fit */
     double      TNDMErr;            /*!< Error on Model DM signal from temponest fit */
+    double      SWGPSignal;         /*!< Model solar-wind GP signal from temponest fit */
+    double      SWGPErr;            /*!< Error on solar-wind GP signal from temponest fit */
     double      TNGroupSignal;      /*!< Model Group Noise signal from temponest fit */
     double      TNGroupErr;         /*!< Error on Model Group Noise signal from temponest fit */
   double TNChromSignal; // Model of Chromatic noise from temponest
   double TNChromErr; // Error on Chromatic noise from temponest
+  double TNWhiteSignal; // Model of White noise from temponest
+  double TNWhiteErr; // Error on White noise from temponest
     double      freq;               /*!< Frequency of observation (in MHz)                          */
     double      freqSSB;            /*!< Frequency of observation in barycentric frame (in Hz)      */
     double      toaErr;             /*!< Error on TOA (in us)                                       */
@@ -622,14 +631,14 @@ typedef struct pulsar {
 
     // new parameters for fdjumps
     int    nfdJumps;                  /*!< Number of jumps                                        */
-    char ffdjumpID[16];
+    char   fdjump_pint_format;        /*!< = 1 if par file used PINT FDxJUMP format, 0 for FDJUMPx */
     double fdjumpVal[MAX_JUMPS];      /*!< Value of jump                                              */
     int    fdjumpIdx[MAX_JUMPS];
     //char   jumpSAT[MAX_JUMPS];      /*!< This jump is in SAT rather than phase */
     int    fitfdJump[MAX_JUMPS];      /*!< = 1 if fit for jump                                        */
     double fdjumpValErr[MAX_JUMPS];   /*!< Error on jump                                              */
     char   fdjumpStr[MAX_JUMPS][MAX_STRLEN]; /*!< String describing jump                              */
-    char fdjump_log;                /* Is the fdjumps log scale */
+    char   fdjump_log;                /* Is the fdjumps log scale */
     
     
     
@@ -794,6 +803,10 @@ typedef struct pulsar {
     double TNDMGam;
     int TNDMC;
   double TNDMCoeffs[200];
+  double SWGPAmp;
+  double SWGPGam;
+  int SWGPC;
+  double SWGPCoeffs[200];
   double TNChromAmp;
   double TNChromGam;
   double TNChromIdx;
@@ -804,7 +817,9 @@ typedef struct pulsar {
  
     int TNsubtractDM;
     int TNsubtractRed;
-  int TNsubtractChrom;
+    int TNsubtractChrom;
+    int TNsubtractSWGP;
+    int TNsubtractWhite;
     int AverageResiduals; 
     int AverageDMResiduals;
     char AverageFlag[MAX_FLAG_LEN];
@@ -915,11 +930,9 @@ typedef struct pulsar {
 
     int TNDM_log_freqs;
     double TNDM_log_factor;
-        int TNChrom_log_freqs;
+    int TNChrom_log_freqs;
     double TNChrom_log_factor;
-    char TNsubtractPoly;
-
-    
+    uint64_t TNsubtractPoly;
 
 } pulsar;
 

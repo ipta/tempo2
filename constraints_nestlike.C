@@ -1,7 +1,9 @@
 #include <cmath>
 #include "constraints_nestlike.h"
+#include "t2fit_nestlike.h"
 #include <assert.h>
 #include <string.h>
+#include <cstdlib>
 #define f1yr (1.0/3.16e7)
 
 double qp_term_cutoff(double freq_days, double logP, double f0, double sig, double lam, double df) {
@@ -59,7 +61,7 @@ double constraints_nestlike_red(pulsar *psr,int ipsr, int iconstraint,int iparam
             freq = freq0 * pow(psr[ipsr].TNRed_log_factor,-subharm);
             // to be consistent with enterprise, we want difference to the previous frequency.
             if (subharm == psr[ipsr].TNRed_log_freqs){
-                df = freq; // difference from zero
+                df = freq/86400.0; // difference from zero
             } else {
                 df = (freq - freq0 * pow(psr[ipsr].TNRed_log_factor,-subharm-1))/86400.0; // in per second
             }
@@ -131,7 +133,7 @@ double constraints_nestlike_red_dm(pulsar *psr,int ipsr, int iconstraint,int ipa
             freq = freq0 * pow(psr[ipsr].TNDM_log_factor,-subharm);
             // to be consistent with enterprise, we want difference to the previous frequency.
             if (subharm == psr[ipsr].TNDM_log_freqs){
-                df = freq; // difference from zero
+                df = freq/86400.0; // difference from zero
             } else {
                 df = (freq - freq0 * pow(psr[ipsr].TNDM_log_factor,-subharm-1))/86400.0; // in per second
             }
@@ -177,7 +179,7 @@ double constraints_nestlike_red_chrom(pulsar *psr,int ipsr, int iconstraint,int 
             int subharm = k - psr[ipsr].TNChromC + 1;
             freq = freq0 * pow(psr[ipsr].TNChrom_log_factor,-subharm);
             if (subharm == psr[ipsr].TNChrom_log_freqs){
-                df = freq; // difference from zero
+                df = freq/86400.0; // difference from zero, converted to per second
             } else {
                 df = (freq - freq0 * pow(psr[ipsr].TNChrom_log_factor,-subharm-1))/86400.0; // in per second
             }       
@@ -196,71 +198,73 @@ double constraints_nestlike_red_chrom(pulsar *psr,int ipsr, int iconstraint,int 
 }
 
 
+double constraints_nestlike_swgp(pulsar *psr,int ipsr, int iconstraint,int iparam,int constraintk,int k,void* special){
+    assert(iconstraint == constraint_swgp_sin || iconstraint == constraint_swgp_cos);
+
+    /*
+     * The SWGP uses the same diagonal power-law prior over Fourier
+     * coefficients as the DM GP, except that SWGP uses the enterprise
+     * definition of ampltude, and hence has the factor of 1/12/pi^2.
+     * The solar-wind geometry is part of the
+     * basis function itself, so it does not enter the coefficient prior.
+     *
+     * SWGPAmp corresponds to the enterprise hyperparameter log10_A_dm_sw.
+     * SWGPGam corresponds to the enterprise hyperparameter gamma_dm_sw.
+     */
+    if (constraintk==k &&
+            (
+             ((iconstraint == constraint_swgp_sin) && (iparam == param_swgp_sin)) ||
+             ((iconstraint == constraint_swgp_cos) && (iparam == param_swgp_cos)) )
+            ) {
+        double maxtspan = psr[ipsr].param[param_finish].val[0] - psr[ipsr].param[param_start].val[0];
+        double SWAmp = pow(10.,psr[ipsr].SWGPAmp);
+        double freq = ((double)(k+1.0))/(maxtspan);
+        double SWIndex = psr[ipsr].SWGPGam;
+        double df = (1.0/maxtspan)/86400.0;
+
+        double rho = (SWAmp*SWAmp)/12./M_PI/M_PI*pow(f1yr,(-3)) * pow(freq*365.25,(-SWIndex))*df;
+
+        return 1.0/sqrt(rho);
+    } else return 0;
+
+}
+
+
 double constraints_nestlike_jitter(pulsar *psr,int ipsr, int iconstraint,int iparam,int constraintk,int k,void* special){
     assert (iconstraint == constraint_jitter);
 
-    if (iparam == param_jitter && constraintk == k) {
-        double ecorrval=0;
-        const int iobs = k;
-        for (int iecorr=0; iecorr < psr[ipsr].nTNECORR; iecorr++){
-            for (int iflag=0;iflag < psr[ipsr].obsn[iobs].nFlags; iflag++){
-                if (
-                        (strcmp(psr[ipsr].obsn[iobs].flagID[iflag],
-                                psr[ipsr].TNECORRFlagID[iecorr])==0)
-                        && (strcmp(psr[ipsr].obsn[iobs].flagVal[iflag],
-                                psr[ipsr].TNECORRFlagVal[iecorr])==0)
+    if (iparam != param_jitter || constraintk != k) return 0;
 
-                   ) {
-                    ecorrval = psr[ipsr].TNECORRVal[iecorr];
-                    break;
-                }
-                if (ecorrval > 0)break;
-            }
+    // k is a jitter group index; find a representative TOA in that group
+    int kobs = -1;
+    for (int i = 0; i < psr[ipsr].nobs; ++i) {
+        if (!psr[ipsr].obsn[i].deleted && t2fit_nestlike_get_jitter_group(psr+ipsr, i, false) == k) { kobs = i; break; }
+    }
+    const int selector = (kobs < 0) ? -1 : t2Fit_nestlike_jitterSelector(psr, ipsr, kobs);
+    if (selector < 0) {
+        logerr("No unique TNECORR/TNSECORR selector for jitter group %d", k);
+        std::exit(EXIT_FAILURE);
+    }
+
+    double ecorrval;
+    if (selector < psr[ipsr].nTNECORR) {
+        ecorrval = psr[ipsr].TNECORRVal[selector];
+    } else {
+        const int secorrIndex = selector - psr[ipsr].nTNECORR;
+        const double tobsval = psr[ipsr].obsn[kobs].tobs;
+        if (!std::isfinite(tobsval) || tobsval <= 0.0) {
+            logerr("Invalid -tobs value for TNSECORR jitter group %d: %g", k, tobsval);
+            std::exit(EXIT_FAILURE);
         }
+        ecorrval = psr[ipsr].TNSECORRVal[secorrIndex] / sqrt(tobsval / 3600.0);
+    }
 
-	
+    if (!std::isfinite(ecorrval) || ecorrval <= 0.0) {
+        logerr("Invalid TNECORR/TNSECORR value for jitter group %d: %g", k, ecorrval);
+        std::exit(EXIT_FAILURE);
+    }
 
-	for (int iecorr=0; iecorr < psr[ipsr].nTNSECORR; iecorr++)
-	  {
-	    
-	    for (int iflag=0;iflag < psr[ipsr].obsn[iobs].nFlags; iflag++){
-	      if (
-		  (strcmp(psr[ipsr].obsn[iobs].flagID[iflag],
-			  psr[ipsr].TNSECORRFlagID[iecorr])==0)
-		  && (strcmp(psr[ipsr].obsn[iobs].flagVal[iflag],
-			     psr[ipsr].TNSECORRFlagVal[iecorr])==0)
-		  
-		  ) 
-		{
-		// need to add in correction here to scale with tobs
-		
-		
-		
-		double tobsval=psr[ipsr].obsn[iobs].tobs;
-		
-	 
-	 
-		ecorrval = psr[ipsr].TNSECORRVal[iecorr]/sqrt(tobsval/3600.);
-		
-		fprintf(stderr, "TOBS ERR TNSECORR  %.3e %.3e %.3e\n", tobsval, ecorrval,  psr[ipsr].TNSECORRVal[iecorr]); 
-		break;
-	      }
-	      if (ecorrval > 0)break;
-	    }
-	  }
-	    
-	return 1e6/ecorrval;
-	    
-	
-    } 
-    else 
-      {
-	return 0;
-      }
-    
-
-
-
+    return 1e6 / ecorrval;
 }
 
 double constraints_nestlike_band(pulsar *psr,int ipsr, int iconstraint,int iparam,int constraintk,int k,void* special){

@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <glob.h>
 #include <string.h>
+#include <vector>
 #include "tabulatedfunction.h"
 
 // Note, these have been tested & differ at the 10^-3.5 (absolute) level
@@ -218,8 +219,8 @@ typedef struct
 } MeteorologyFunction;
 
 static int meteorology_tables_initialized = 0;
-DynamicArray zenithWetDelayTables;
-DynamicArray surfaceAtmosphericPressureTables;
+static std::vector<MeteorologyFunction> zenithWetDelayTables;
+static std::vector<MeteorologyFunction> surfaceAtmosphericPressureTables;
 
     void
 MeteorologyFunction_load(MeteorologyFunction *func, char *fileName)
@@ -256,7 +257,7 @@ MeteorologyFunction_getEndMJD(MeteorologyFunction *func)
     void
 initialize_meteorology_table(int dispWarnings,
         const char *path, const char *extension,
-        DynamicArray *tables,
+    std::vector<MeteorologyFunction> *tables,
         const char *description)
 {
     glob_t g;
@@ -265,7 +266,7 @@ initialize_meteorology_table(int dispWarnings,
     int globRet;
 
     MeteorologyFunction func;
-    DynamicArray_init(tables, sizeof(MeteorologyFunction));
+    tables->clear();
 
     /* load all  files in specified spot */
     sprintf(pattern, "%s/%s/*.%s", getenv(TEMPO2_ENVIRON), path, extension);
@@ -287,11 +288,13 @@ initialize_meteorology_table(int dispWarnings,
     for (pfname = g.gl_pathv; *pfname != NULL; pfname++)
     {
         MeteorologyFunction_load(&func, *pfname);
-        DynamicArray_push_back(tables, &func);
+        tables->push_back(func);
         if (dispWarnings==0)
             printf("Loaded %s for site %s from %s\n", 
                     description, func.siteName, func.table.fileName);
     }
+
+    globfree(&g);
 }
 
     void
@@ -308,32 +311,26 @@ initialize_meteorology_tables(int dispWarnings)
     meteorology_tables_initialized = 1;
 }
 
-double getMeteorologicalValue(DynamicArray *tables,
+double getMeteorologicalValue(std::vector<MeteorologyFunction> &tables,
         char *siteName, double mjd, int warnings)
 {
     if (meteorology_tables_initialized != 1)
         initialize_meteorology_tables(warnings);
 
     // search for that site name in that MJD range
-    size_t itab;
-    MeteorologyFunction *func;
-    for (itab=0; itab < tables->nelem; itab++)
+    for (MeteorologyFunction &func : tables)
     {
-        func = ((MeteorologyFunction *)tables->data) + itab;
-        if (!strcasecmp(func->siteName, siteName)
-                && MeteorologyFunction_getStartMJD(func) <= mjd
-                && MeteorologyFunction_getEndMJD(func) >= mjd)
-            break;
+        if (!strcasecmp(func.siteName, siteName)
+                && MeteorologyFunction_getStartMJD(&func) <= mjd
+                && MeteorologyFunction_getEndMJD(&func) >= mjd)
+            return MeteorologyFunction_getValue(&func, mjd);
     }
-    if (itab < tables->nelem)
-        return MeteorologyFunction_getValue(func, mjd);
-    else
-        return 0.0;
+    return 0.0;
 }
 
 double getZenithWetDelay(char *siteName, double mjd, int warnings)
 {
-    double zwd = getMeteorologicalValue(&zenithWetDelayTables, siteName, mjd,
+    double zwd = getMeteorologicalValue(zenithWetDelayTables, siteName, mjd,
             warnings);
     if (zwd==0.0)
     {
@@ -349,7 +346,7 @@ double getZenithWetDelay(char *siteName, double mjd, int warnings)
 
 double getSurfaceAtmosphericPressure(char *siteName, double mjd, int warnings)
 {
-    double sap = getMeteorologicalValue(&surfaceAtmosphericPressureTables, 
+    double sap = getMeteorologicalValue(surfaceAtmosphericPressureTables, 
             siteName, mjd,
             warnings);
     if (sap==0.0)

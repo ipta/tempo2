@@ -112,24 +112,42 @@ double ELL1model(pulsar *psr,int p,int ipos,int param,int k)
 
     ct = psr[p].obsn[ipos].bbat;      
     tt0 = (ct-t0asc)*SECDAY;
-    // --- Changes to handle higher orbital-frequency derivatives (FB1, FB2, ...) ---                                               
-    // 04/2015, H. J. Pletsch                                                                                                       
-    orbits = tt0/pb;
-    if (psr[p].param[param_fb].paramSet[1]==1) {
-        int j;
-        double fac = 1.0;
-        for (j=1;j<psr[p].param[param_fb].aSize;j++) {
-          double fbx;
-          fac = fac/((double)(j+1));
-          if (psr[p].param[param_fb].paramSet[j]==1) {
-            fbx = psr[p].param[param_fb].val[j];
-            orbits += fac * fbx * pow(tt0,j+1);
-          }
+    // --- Handle higher orbital-frequency derivatives (FB1, FB2, ...) ---
+    // A missing coefficient is zero; it does not disable higher terms.
+    int useHigherFB = 0;
+    for (int j=1;j<psr[p].param[param_fb].aSize;j++)
+    {
+        if (psr[p].param[param_fb].paramSet[j]==1)
+        {
+            useHigherFB = 1;
+            break;
         }
-      } else {
+    }
+
+    orbits = tt0/pb;
+    if (useHigherFB == 1)
+    {
+        double fac = 1.0;
+        for (int j=1;j<psr[p].param[param_fb].aSize;j++)
+        {
+            fac = fac/((double)(j+1));
+            if (psr[p].param[param_fb].paramSet[j]==1)
+            {
+                const double fbx = psr[p].param[param_fb].val[j];
+                orbits += fac*fbx*pow(tt0,j+1);
+            }
+            else if (j==1 && psr[p].param[param_pbdot].paramSet[0]==1)
+            {
+                const double fb1 = -pbdot/(pb*pb);
+                orbits += fac*fb1*pow(tt0,2);
+            }
+        }
+    }
+    else
+    {
         orbits -= 0.5*(pbdot+xpbdot)*pow(tt0/pb,2);
-      }
-      // --- End of changes to handle higher orbital-frequency derivatives ---                                                        
+    }
+    // --- End higher orbital-frequency derivatives ---
 
     if (psr[p].param[param_orbifunc].paramSet[0] == 1)
     {
@@ -240,7 +258,11 @@ double ELL1model(pulsar *psr,int p,int ipos,int param,int k)
     else if (param==param_eps2dot)
         return Ceps2*tt0;
     else if (param==param_pbdot)
+    {
+        if (psr[p].param[param_fb].paramSet[1]==1)
+            return 0.0;
         return 0.5*tt0*(-Csigma*an*SECDAY*tt0/(pb*SECDAY));
+    }
     else if (param==param_a1dot)
         return Cx*tt0;  
     else if (param==param_sini)

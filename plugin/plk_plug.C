@@ -85,7 +85,7 @@ void overPlotShapiro(pulsar *psr,float offset,longdouble centreEpoch);
 void binResiduals(pulsar *psr,int npsr,float *x,float *y,int count,int *id, int *overN,
         float overX[], float overY[], float overYe[],int xplot,int yplot,
         float errBar[],double unitFlag,int plotPhase,double centreEpoch);
-void drawMenu(pulsar *psr,float plotx1,float plotx2,float ploty1,float ploty2,int menu,int paramOffset);
+void drawMenu(pulsar *psr,float plotx1,float plotx2,float ploty1,float ploty2,int menu,int paramOffset, int plk_mode);
 void drawMenu3(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,int menu,int xplot,int yplot);
 void slaClyd ( int iy, int im, int id, int *ny, int *nd, int *jstat );
 void slaCalyd ( int iy, int im, int id, int *ny, int *nd, int *j );
@@ -96,7 +96,7 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
         float zoomX1,float zoomX2,longdouble origStart,longdouble origFinish,longdouble centreEpoch,
         int menu,int plotx,char parFile[][MAX_FILELEN], char timFile[][MAX_FILELEN],int argc,char *argv[],int *xplot,int *yplot,int *graphics,char highlightID[100][100],char  highlightVal[100][100],int *highlightNum,float aspect,int fontType,int lineWidth,char *bkgrdColour,char *lineColour,int *jumpOffset);
 void setLabel(char *ystr,int yplot,int plotPhase,double unitFlag,longdouble centreEpoch,char *userValStr,char *flagStr);
-void drawOption(float x,float y,const char *str,int fit);
+void drawOption(float x, float y, const char *str, int fit, int colour);
 void swapFit(pulsar *psr,int par,int k,int button);
 void newTim(pulsar *psr);
 void plotFITWAVES_spec();
@@ -114,6 +114,75 @@ int    FITWAVES_n;
 int    FITWAVES_harmonicStep;
 double FITWAVES_par[1000];
 char flagStore[100][100];
+
+/*
+ * Axis-selector button geometry is centralized below so drawMenu3() and
+ * checkMenu3() cannot drift apart. If you need to move buttons, change their
+ * spacing, or add a new selector entry, update plk_axis_selector_buttons and
+ * the PLK_AXIS_SELECTOR_* / PLK_MENU3_VIEWPORT_* constants here rather than
+ * editing drawMenu3() or checkMenu3() directly.
+ */
+struct PlkAxisSelectorButton {
+    float y_top;
+    int plot;
+    const char *label;
+};
+static const float PLK_MENU3_VIEWPORT_X_MAX = 0.3f;
+static const float PLK_MENU3_VIEWPORT_Y_MIN = 0.3f;
+static const float PLK_MENU3_VIEWPORT_Y_SPAN = 0.5f;
+static const float PLK_AXIS_SELECTOR_X_COLUMN_MIN = 0.50f;
+static const float PLK_AXIS_SELECTOR_X_COLUMN_MAX = 0.55f;
+static const float PLK_AXIS_SELECTOR_Y_COLUMN_MIN = 0.60f;
+static const float PLK_AXIS_SELECTOR_Y_COLUMN_MAX = 0.65f;
+static const float PLK_AXIS_SELECTOR_BUTTON_HEIGHT = 0.04f;
+static const PlkAxisSelectorButton plk_axis_selector_buttons[] = {
+    {0.990f, 1, "pre-fit"},
+    {0.935f, 2, "post-fit"},
+    {0.880f, 3, "date"},
+    {0.825f, 4, "orbital phase"},
+    {0.770f, 5, "serial"},
+    {0.715f, 6, "day of year"},
+    {0.660f, 7, "frequency"},
+    {0.605f, 8, "TOA error"},
+    {0.550f, 10, "year"},
+    {0.495f, 11, "elevation"},
+    {0.440f, 12, "rounded MJD"},
+    {0.385f, 13, "sidereal time"},
+    {0.330f, 14, "hour angle"},
+    {0.275f, 15, "para. angle"},
+    {0.220f, 16, "Red Noise"},
+    {0.165f, 17, "DM Var"},
+    {0.110f, 20, "SWGP"},
+    {0.055f, 19, "Chrom. Noise"}
+};
+static bool plkAxisSelectorEnabled(const pulsar *psr, int plot)
+{
+    switch (plot) {
+        case 16:
+            return psr[0].TNRedAmp != 0 && psr[0].TNRedGam != 0;
+        case 17:
+            return psr[0].TNDMAmp != 0 && psr[0].TNDMGam != 0;
+        case 19:
+            return psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx != 0;
+        case 20:
+            return psr[0].SWGPAmp != 0 && psr[0].SWGPGam != 0;
+        default:
+            return true;
+    }
+}
+static int plkAxisSelectorHitPlot(const pulsar *psr, float menu_x, float menu_y)
+{
+    if (menu_x < PLK_AXIS_SELECTOR_X_COLUMN_MIN || menu_x > PLK_AXIS_SELECTOR_Y_COLUMN_MAX)
+        return -1;
+    for (unsigned idx = 0; idx < sizeof(plk_axis_selector_buttons)/sizeof(plk_axis_selector_buttons[0]); ++idx) {
+        const PlkAxisSelectorButton &button = plk_axis_selector_buttons[idx];
+        if (!plkAxisSelectorEnabled(psr, button.plot))
+            continue;
+        if (menu_y <= button.y_top && menu_y >= button.y_top - PLK_AXIS_SELECTOR_BUTTON_HEIGHT)
+            return button.plot;
+    }
+    return -1;
+}
 
 void help(int plk_mode) /* Display help */
 {
@@ -141,8 +210,10 @@ void help(int plk_mode) /* Display help */
         printf("_          add 1 pulse number to all points after this\n");
         printf("=          subtract 1 pulse number from this point\n");
         printf("-          add 1 pulse number to this point\n");
+        printf("H          Add half a phase turn to selected points (via -padd flag)\n");
+        printf("J          Add a third of a phase turn to selected points (via -padd flag)\n");
         printf("<<<<<\n\n");
-    } else{
+    } else {
         printf("+          add positive phase jump\n");
         printf("-          add negative phase jump\n");
     }
@@ -206,8 +277,8 @@ void help(int plk_mode) /* Display help */
     printf("9         plot user value\n");
     printf("0         plot year\n");
     printf("-         plot elevation\n");
-    printf("K         subtract/add TN red noise\n");
-    printf("F         subtract/add TN DM Variations\n");
+    printf("K         subtract/add TN achromatic noise\n");
+    printf("F         subtract/add TN chromatic noise\n");
 
     printf("\nDisplay Options\n"); /* Determines HOW to display the things */
     printf("===============\n");
@@ -217,11 +288,11 @@ void help(int plk_mode) /* Display help */
     printf("g          change graphics device\n");
     printf("G          change gridding on graphics device\n");
     printf("ctrl-e     highlight points more than 3 sigma from the mean\n");
-    printf("H          highlight points with specific flag using symbols\n");
+    if (plk_mode != 1) printf("H          highlight points with specific flag using symbols\n");
     printf("ctrl-i     highlight points with specific flag using colours\n");
     printf("I          indicate individual observations\n");
     printf("j          draw line between points \n");
-    printf("J          toggle plotting points\n");
+    if (plk_mode != 1) printf("J          toggle plotting points\n");
     printf("L          add label to plot\n");
     printf("ctrl-l     add line to plot\n");
     printf("ctrl-m     toggle menu bar\n");
@@ -685,6 +756,8 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
     char flagStrX[1024]="NULL";
     char flagStrY[1024]="NULL";
 
+    double jump_turns = 3.0;
+
     for (i=0;i<100;i++)
         flagCol[i]= 1;
 
@@ -1065,13 +1138,18 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 
 		}
 
-		if (yplot==19)
+        if (yplot==19)
 		  {
 		    double freq=psr[0].obsn[i].freqSSB;
 		    double index=psr[0].TNChromIdx;
 		    errBar[count] = psr[0].obsn[i].TNChromErr*powf(freq/1.4e9,index)*unitFlag/1e-6;
 		    //fprintf(stderr, "%.3e\n", errBar[count]);
                   }
+
+        if (yplot==20)
+          {
+            errBar[count] = (float) psr[0].obsn[i].SWGPErr/1e-6;
+          }
 
                 if (bad==0) count++;	    
             }
@@ -1148,7 +1226,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 cpgsvp(0.0,1.0,0.8,1.0);
                 cpgswin(0,1,0,1);
                 /*	    cpgbox("",0.0,0,"",0.0,0); */
-                drawMenu(psr,plotx1,plotx2,ploty1,ploty2,menu,paramOffset);
+                drawMenu(psr,plotx1,plotx2,ploty1,ploty2,menu,paramOffset,plk_mode);
                 if (menu==3)
                 {
                     cpgsvp(0.0,0.3,0.3,0.8);
@@ -1210,7 +1288,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
 
             if (yplot==2)
 	      {
-		if ((psr[0].TNsubtractDM==1) || (psr[0].TNsubtractRed ==1)|| (psr[0].TNsubtractChrom ==1))
+        if ((psr[0].TNsubtractDM==1) || (psr[0].TNsubtractRed ==1)|| (psr[0].TNsubtractChrom ==1) || (psr[0].TNsubtractSWGP ==1))
 		  {
 		    sprintf(title,"%s (%s = %.3f \\gms) %s",psr[0].name,rmsStr,psr[0].rmstn,fitType);
 		  }
@@ -1363,7 +1441,7 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                 //if (plotPoints==1)
                 //  {
                 cpgpt(ncount,x2,y2,freqStyle[j]);
-                if (plotErr==1 && (yplot==1 || yplot==2 || yplot==16 || yplot==17 || yplot ==19 )) cpgerry(ncount,x2,yerr1_2,yerr2_2,1);
+                if (plotErr==1 && (yplot==1 || yplot==2 || yplot==16 || yplot==17 || yplot ==19 || yplot ==20 )) cpgerry(ncount,x2,yerr1_2,yerr2_2,1);
                 if (plotErr==2 && (yplot==1 || yplot==2)) cpgerry(ncount,x2,yerr1_2,yerr2_2,0);
                 //  }
                 if (join==1)
@@ -1623,32 +1701,35 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
             }
             else if(key=='F'){
                 if(psr[0].TNsubtractDM==0){
-                    printf("will substract PL DM/Chrom Variations on next Fit \n");
+                    printf("will substract PL DM/Chrom/SW Variations\n");
                     psr[0].TNsubtractDM=1;
                     psr[0].TNsubtractChrom=1;
+                    psr[0].TNsubtractSWGP=1;
 		    formResiduals(psr,npsr,1);
 		     textOutput(psr,npsr,0,0,0,0,"");
 		}
                 else if(psr[0].TNsubtractDM==1){
-                    printf("will Re-add PL DM/Chrom Variations on next Fit \n");
+                    printf("will Re-add PL DM/Chrom/SW Variations\n");
                     psr[0].TNsubtractDM=0;
                     psr[0].TNsubtractChrom=0;
+                    psr[0].TNsubtractSWGP=0;
 		    formResiduals(psr,npsr,1);
 		     textOutput(psr,npsr,0,0,0,0,"");
 		}
 
             }
             else if(key=='K'){
-                printf("youve presssed K!!!\n");
                 if(psr[0].TNsubtractRed==0){
-                    printf("Subtract red noise from fit\n");
+                    printf("Subtract Achromatic noise (TNRed and TNECORR)\n");
                     psr[0].TNsubtractRed=1;
+                    psr[0].TNsubtractWhite=1;
                     formResiduals(psr,npsr,1);
                     textOutput(psr,npsr,0,0,0,0,"");
                 }
                 else if(psr[0].TNsubtractRed==1){
-                    printf("Do Not Subtract Red Noise on next Fit \n");
+                    printf("will Re-add Achromatic noise (TNRed and TNECORR) \n");
                     psr[0].TNsubtractRed=0;
+                    psr[0].TNsubtractWhite=0;
                     formResiduals(psr,npsr,1);
                     textOutput(psr,npsr,0,0,0,0,"");
                 }
@@ -1925,9 +2006,9 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     printf("Running: %s\n",str);
                     system(str);
                 }
-                else if (key=='j') /* Draw line between points */
+                else if (plk_mode != 1 && key=='j') /* Draw line between points */
                     join*=-1;
-                else if (key=='J') /* Toggle plotting points */
+                else if (plk_mode != 1 && key=='J') /* Toggle plotting points */
                     plotPoints*=-1;
                 else if (key=='Q') /* Output deleted files for MySQL query */
                 {
@@ -2008,26 +2089,86 @@ void doPlot(pulsar *psr,int npsr,char *gr,double unitFlag, char parFile[][MAX_FI
                     writeTim(timFile[0],psr,"tempo2");
                 else if (key=='t') /* Toggle displaying statistics */
                     statistics*=-1;
-                else if (key=='H') /* Highlight */
+                else if (plk_mode!= 1 && key=='H') /* Highlight */
                 {
                     printf("FlagID = ");  scanf("%s",highlightID[highlightNum]);
                     printf("FlagVal = "); scanf("%s",highlightVal[highlightNum++]);
                     getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
+                } else if (plk_mode == 1 && key == 'j') { 
+                    // set custom jump turns for pulse number adjustment mode
+                    double requested_jump_turns = jump_turns;
+                    printf("Enter number of turns to jump for J key (e.g. 3 for 1/3 of a turn): ");
+                    if (scanf("%lf",&requested_jump_turns) == 1 && requested_jump_turns > 0.0) {
+                        jump_turns = requested_jump_turns;
+                    } else {
+                        printf("Invalid value, keeping previous jump setting (%lg turns).\n", jump_turns);
+                    }
+                    getchar(); // Apparently gcc doesn't flush stdin with fflush(stdin)
+                    printf("In J mode, will add %lg turns\n",1.0/jump_turns);
+                } else if (plk_mode == 1 && (key=='H' || key=='J')) {
+                    // In pulse number adjustment mode, we use H to add half a turn to selected points.
+                    double phaseadd = 0.5;
+                    if (key=='J') phaseadd = 1.0/jump_turns; // Add a custom fraction of a turn instead of half a turn if in J mode.
+                    printf("key = %c adding phase %lg via -padd flag\n", key, phaseadd);
+
+                    cpgband(2,0,mouseX,mouseY,&mouseX2,&mouseY2,&key);
+                    float X1 = TKretMin_f(mouseX,mouseX2);
+                    float X2 = TKretMax_f(mouseX,mouseX2);
+                    float Y1 = TKretMin_f(mouseY,mouseY2);
+                    float Y2 = TKretMax_f(mouseY,mouseY2);
+                    
+                    for (i = 0 ; i < count; ++i) {
+                        //	    printf("Here with %d %f %f %d\n",i,x[i],y[i],id[i]);
+                        if ((x[i]>X1) &&
+                                (x[i]<X2) &&
+                                (y[i]>Y1) &&
+                                (y[i]<Y2)) {
+                            // if it has a -padd flag, increase by 0.5, otherwise add a flag with value 0.5
+                            int k;
+                            int hasPaddFlag = 0;
+                            for (k=0;k<psr[0].obsn[id[i]].nFlags;k++) {
+                                if (strcmp(psr[0].obsn[id[i]].flagID[k],"-padd")==0) {
+                                    double newphase = atof(psr[0].obsn[id[i]].flagVal[k])+phaseadd;
+                                    if (newphase >= 1.0) {
+                                        newphase -= 1.0;
+                                        // If the phase wrap causes us to go above 1.0, we need to subtract one from the pulse number to keep things consistent.
+                                        psr[0].obsn[id[i]].pulseN -= 1;
+                                        update_pulse_number_flag(psr,id[i]);
+                                    }
+                                    sprintf(psr[0].obsn[id[i]].flagVal[k],"%.8lg",newphase);
+                                    hasPaddFlag = 1;
+                                    break;
+                                }
+                            }
+                            if (!hasPaddFlag) {
+                                strcpy(psr[0].obsn[id[i]].flagID[psr[0].obsn[id[i]].nFlags],"-padd");
+                                sprintf(psr[0].obsn[id[i]].flagVal[psr[0].obsn[id[i]].nFlags],"%.8lg",phaseadd);
+                                psr[0].obsn[id[i]].nFlags++;
+                            }
+                        }
+                    }
+                    formResiduals(psr,npsr,1);
                 }
-                else if (plk_mode == 1 && (key=='-' || key=='+' || key=='_' || key=='=')) {
+                else if (plk_mode == 1 && (key=='-' || key=='+' || key=='_' || key=='=' || key == '0')) {
                     // This is pulse number adjusting mode
                     int i= idPoint(psr,x,y,id,count,mouseX,mouseY); /* Identify closest point */
                     int dpn=-1;
                     if (key == '-' || key== '_' ){
                         dpn=1;
                     }
+                    if (key == '0') {
+                        double phase_turns = psr[0].obsn[i].residual*psr[0].param[param_f].val[0];
+                        int nearest_turns = (phase_turns >= 0.0) ? (int)floor(phase_turns + 0.5)
+                                                               : (int)ceil(phase_turns - 0.5);
+                        dpn = nearest_turns;
+                    }
 
-                    if (key == '-' || key == '=' ) { // just this ToA
+                    if (key == '-' || key == '=' || key == '0') { // just this ToA
                         psr[0].obsn[i].pulseN += dpn;
                         update_pulse_number_flag(psr,i);
                     } else {
-                        // All ToAs after this one
-                        longdouble pn_epoch = psr[0].obsn[i].sat;
+                        // All ToAs after this one. Subtract about 1 minute.
+                        longdouble pn_epoch = psr[0].obsn[i].sat - 60.0/SECDAY;
                         for (i=0;i<psr[0].nobs;i++){
                             if (psr[0].obsn[i].sat >= pn_epoch) {
                                 psr[0].obsn[i].pulseN += dpn;
@@ -3553,53 +3694,30 @@ void checkMenu3(pulsar *psr,float mx,float my,int button,int fitFlag,int setZoom
 
     x7 = (mx-x3)*xscale+x1; 
     y7 = (my-y3)*yscale+y1; 
-    mouseX = (int)((x7/(x6-x5)/0.3-0.5)/0.1);
-    mouseY = (int)(((1-(y7/(y6-y5)))-0.2)*2.0/0.6*10.0); // 0.2 because the top menu bar has height of 0.2
-    //  printf("MENU3 mouseX = %d, mouseY = %d [%g]\n",mouseX,mouseY,((1-(y7/(y6-y5)))-0.2)*2.0/0.6*10.0);
-    if (mouseX==0)
     {
-        if (mouseY==0) *xplot=1;
-        else if (mouseY==1)  *xplot=2;
-        else if (mouseY==2)  *xplot=3;
-        else if (mouseY==3)  *xplot=4;
-        else if (mouseY==4)  *xplot=5;
-        else if (mouseY==5)  *xplot=6;
-        else if (mouseY==6)  *xplot=7;
-        else if (mouseY==7)  *xplot=8;
-        else if (mouseY==8)  *xplot=10;
-        else if (mouseY==9)  *xplot=11;
-        else if (mouseY==10) *xplot=12;
-        else if (mouseY==11) *xplot=13;
-        else if (mouseY==12) *xplot=14;
-        else if (mouseY==13) *xplot=15;
-        else if (mouseY==14) *xplot=16;
-        else if (mouseY==15) *xplot=17;
-	else if (mouseY==16) *xplot=19;
-    }
-    else if (mouseX==1)
-    {
-        if (mouseY==0) *yplot=1;
-        else if (mouseY==1)  *yplot=2;
-        else if (mouseY==2)  *yplot=3;
-        else if (mouseY==3)  *yplot=4;
-        else if (mouseY==4)  *yplot=5;
-        else if (mouseY==5)  *yplot=6;
-        else if (mouseY==6)  *yplot=7;
-        else if (mouseY==7)  *yplot=8;
-        else if (mouseY==8)  *yplot=10;
-        else if (mouseY==9)  *yplot=11;
-        else if (mouseY==10) *yplot=12;
-        else if (mouseY==11) *yplot=13;
-        else if (mouseY==12) *yplot=14;
-        else if (mouseY==13) *yplot=15;
-        else if (mouseY==14 &&  psr[0].TNRedAmp != 0 && psr[0].TNRedGam != 0) *yplot=16;
-        else if (mouseY==15 && psr[0].TNDMAmp != 0 && psr[0].TNDMGam != 0) *yplot=17;
-	else if (mouseY==16 && psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx !=0) *yplot=19;
+        const float xfrac = (x7-x5)/(x6-x5);
+        const float yfrac = (y7-y5)/(y6-y5);
+        const float menu_x = xfrac / PLK_MENU3_VIEWPORT_X_MAX;
+        const float menu_y = (yfrac - PLK_MENU3_VIEWPORT_Y_MIN) / PLK_MENU3_VIEWPORT_Y_SPAN;
+        int axis_col = -1;
+        int axis_plot = -1;
+        if (menu_x >= PLK_AXIS_SELECTOR_X_COLUMN_MIN && menu_x <= PLK_AXIS_SELECTOR_X_COLUMN_MAX) axis_col = 0;
+        else if (menu_x >= PLK_AXIS_SELECTOR_Y_COLUMN_MIN && menu_x <= PLK_AXIS_SELECTOR_Y_COLUMN_MAX) axis_col = 1;
+        if (axis_col != -1)
+            axis_plot = plkAxisSelectorHitPlot(psr, menu_x, menu_y);
+
+        logdbg("checkMenu3 axis click: mx=%g my=%g x7=%g y7=%g xfrac=%g yfrac=%g menu_x=%g menu_y=%g axis_col=%d axis_plot=%d",
+               mx, my, x7, y7, xfrac, yfrac, menu_x, menu_y, axis_col, axis_plot);
+
+        if (axis_col == 0 && axis_plot != -1)
+            *xplot = axis_plot;
+        else if (axis_col == 1 && axis_plot != -1)
+            *yplot = axis_plot;
     }
 
     // Now check the bottom menu
-    mouseX = (int)(x7/(x6-x5)*10.0);
-    mouseY = (int)(((1-(y7/(y6-y5)))-0.8)/0.2*5); // 0.2 because the top menu bar has height of 0.2
+    mouseX = (int)(((x7-x5)/(x6-x5))*10.0);
+    mouseY = (int)(((1-((y7-y5)/(y6-y5)))-0.8)/0.2*5); // 0.2 because the top menu bar has height of 0.2
     //  printf("MENU3 mouseX = %d, mouseY = %d [%g]\n",mouseX,mouseY,((1-(y7/(y6-y5)))-0.2)*2.0/0.6*10.0);
     if (mouseX==0 && mouseY==0)
     {
@@ -3759,13 +3877,15 @@ void swapFit(pulsar *psr,int par,int k,int button)
     }
 }
 
-void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,int menu,int paramOffset)
+void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,int menu,int paramOffset, int plk_mode)
 {
     float x1,y1,x2,y2,xscale,yscale,x3,x4,y3,y4;
     float x0,y0,xscale2,yscale2;
     float mx,my;
     float xpos,ypos;
     char key;
+    int colour=plk_mode+2;
+    while (colour > 13) colour-=10;
 
     /*  cpgrect(plotx1,plotx1+2,ploty1,10); */
     /*  cpgqvp(3,&x1,&x2,&y1,&y2);
@@ -3782,65 +3902,65 @@ void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,i
         printf("Have %f %f\n",mx,my); */
     if (menu==1)
     {
-        drawOption(0,0.9,"RAJ",psr->param[param_raj].fitFlag[0]);
-        drawOption(0.1,0.90,"DECJ",psr->param[param_decj].fitFlag[0]);
-        drawOption(0.2,0.90,"F0",psr->param[param_f].fitFlag[0]);
-        drawOption(0.3,0.90,"F1",psr->param[param_f].fitFlag[1]);
-        drawOption(0.4,0.90,"F2",psr->param[param_f].fitFlag[2]);
-        drawOption(0.5,0.90,"DM",psr->param[param_dm].fitFlag[0]);
-        drawOption(0.6,0.90,"PMRA",psr->param[param_pmra].fitFlag[0]);
-        drawOption(0.7,0.90,"PMDEC",psr->param[param_pmdec].fitFlag[0]);
-        drawOption(0.8,0.90,"PX",psr->param[param_px].fitFlag[0]);
+        drawOption(0,0.9,"RAJ",psr->param[param_raj].fitFlag[0],colour);
+        drawOption(0.1,0.90,"DECJ",psr->param[param_decj].fitFlag[0],colour);
+        drawOption(0.2,0.90,"F0",psr->param[param_f].fitFlag[0],colour);
+        drawOption(0.3,0.90,"F1",psr->param[param_f].fitFlag[1],colour);
+        drawOption(0.4,0.90,"F2",psr->param[param_f].fitFlag[2],colour);
+        drawOption(0.5,0.90,"DM",psr->param[param_dm].fitFlag[0],colour);
+        drawOption(0.6,0.90,"PMRA",psr->param[param_pmra].fitFlag[0],colour);
+        drawOption(0.7,0.90,"PMDEC",psr->param[param_pmdec].fitFlag[0],colour);
+        drawOption(0.8,0.90,"PX",psr->param[param_px].fitFlag[0],colour);
         if (strcmp(psr->binaryModel,"ELL1")==0 
                 || (strcmp(psr->binaryModel,"T2")==0 && psr->param[param_eps1].paramSet[0]==1))
         {
-            drawOption(0.2,0.70,"TASC",psr->param[param_tasc].fitFlag[0]);
-            drawOption(0.3,0.70,"EPS1",psr->param[param_eps1].fitFlag[0]);  
-            drawOption(0.4,0.70,"EPS2",psr->param[param_eps2].fitFlag[0]);
-            drawOption(0.5,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0]);    
-            drawOption(0.7,0.70,"KOM",psr->param[param_kom].fitFlag[0]);
-            drawOption(0.8,0.70,"KIN",psr->param[param_kin].fitFlag[0]);
-            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0]);
-            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0]);
+            drawOption(0.2,0.70,"TASC",psr->param[param_tasc].fitFlag[0],colour);
+            drawOption(0.3,0.70,"EPS1",psr->param[param_eps1].fitFlag[0],colour);  
+            drawOption(0.4,0.70,"EPS2",psr->param[param_eps2].fitFlag[0],colour);
+            drawOption(0.5,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0],colour);    
+            drawOption(0.7,0.70,"KOM",psr->param[param_kom].fitFlag[0],colour);
+            drawOption(0.8,0.70,"KIN",psr->param[param_kin].fitFlag[0],colour);
+            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0],colour);
+            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0],colour);
         }
         else if (strcmp(psr->binaryModel,"T2")==0)
         {
-            drawOption(0.2,0.70,"T0",psr->param[param_t0].fitFlag[0]);
-            drawOption(0.3,0.70,"ECC",psr->param[param_ecc].fitFlag[0]);  
-            drawOption(0.4,0.70,"OM",psr->param[param_om].fitFlag[0]);
-            drawOption(0.5,0.70,"OMDOT",psr->param[param_omdot].fitFlag[0]);
-            drawOption(0.6,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0]);
-            drawOption(0.7,0.70,"KOM",psr->param[param_kom].fitFlag[0]);
-            drawOption(0.8,0.70,"KIN",psr->param[param_kin].fitFlag[0]);
-            drawOption(0.9,0.90,"M2",psr->param[param_m2].fitFlag[0]);
-            drawOption(0.9,0.70,"SINI",psr->param[param_sini].fitFlag[0]);
-            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0]);
-            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0]);
+            drawOption(0.2,0.70,"T0",psr->param[param_t0].fitFlag[0],colour);
+            drawOption(0.3,0.70,"ECC",psr->param[param_ecc].fitFlag[0],colour);  
+            drawOption(0.4,0.70,"OM",psr->param[param_om].fitFlag[0],colour);
+            drawOption(0.5,0.70,"OMDOT",psr->param[param_omdot].fitFlag[0],colour);
+            drawOption(0.6,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0],colour);
+            drawOption(0.7,0.70,"KOM",psr->param[param_kom].fitFlag[0],colour);
+            drawOption(0.8,0.70,"KIN",psr->param[param_kin].fitFlag[0],colour);
+            drawOption(0.9,0.90,"M2",psr->param[param_m2].fitFlag[0],colour);
+            drawOption(0.9,0.70,"SINI",psr->param[param_sini].fitFlag[0],colour);
+            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0],colour);
+            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0],colour);
         }
         else if (psr->param[param_pb].paramSet[0] == 1)
         {
-            drawOption(0.2,0.70,"T0",psr->param[param_t0].fitFlag[0]);
-            drawOption(0.3,0.70,"ECC",psr->param[param_ecc].fitFlag[0]);  
-            drawOption(0.4,0.70,"OM",psr->param[param_om].fitFlag[0]);
-            drawOption(0.5,0.70,"OMDOT",psr->param[param_omdot].fitFlag[0]);
-            drawOption(0.6,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0]);
-            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0]);
-            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0]);
+            drawOption(0.2,0.70,"T0",psr->param[param_t0].fitFlag[0],colour);
+            drawOption(0.3,0.70,"ECC",psr->param[param_ecc].fitFlag[0],colour);  
+            drawOption(0.4,0.70,"OM",psr->param[param_om].fitFlag[0],colour);
+            drawOption(0.5,0.70,"OMDOT",psr->param[param_omdot].fitFlag[0],colour);
+            drawOption(0.6,0.70,"PBDOT",psr->param[param_pbdot].fitFlag[0],colour);
+            drawOption(0.0,0.70,"PB",psr->param[param_pb].fitFlag[0],colour);
+            drawOption(0.1,0.70,"A1",psr->param[param_a1].fitFlag[0],colour);
         }
         else 
             if(debugFlag==1) printf("No binary model\n");
     }
     else if (menu==2)
     {
-        drawOption(0.0,0.90,"F0",psr->param[param_f].fitFlag[0]);
-        drawOption(0.1,0.90,"F1",psr->param[param_f].fitFlag[1]);
-        drawOption(0.2,0.90,"F2",psr->param[param_f].fitFlag[2]);
-        drawOption(0.3,0.90,"F3",psr->param[param_f].fitFlag[3]);
-        drawOption(0.4,0.90,"F4",psr->param[param_f].fitFlag[4]);
-        drawOption(0.5,0.90,"F5",psr->param[param_f].fitFlag[5]);
-        drawOption(0.6,0.90,"F6",psr->param[param_f].fitFlag[6]);
-        drawOption(0.7,0.90,"F7",psr->param[param_f].fitFlag[7]);
-        drawOption(0.8,0.90,"F8",psr->param[param_f].fitFlag[8]);
+        drawOption(0.0,0.90,"F0",psr->param[param_f].fitFlag[0],colour);
+        drawOption(0.1,0.90,"F1",psr->param[param_f].fitFlag[1],colour);
+        drawOption(0.2,0.90,"F2",psr->param[param_f].fitFlag[2],colour);
+        drawOption(0.3,0.90,"F3",psr->param[param_f].fitFlag[3],colour);
+        drawOption(0.4,0.90,"F4",psr->param[param_f].fitFlag[4],colour);
+        drawOption(0.5,0.90,"F5",psr->param[param_f].fitFlag[5],colour);
+        drawOption(0.6,0.90,"F6",psr->param[param_f].fitFlag[6],colour);
+        drawOption(0.7,0.90,"F7",psr->param[param_f].fitFlag[7],colour);
+        drawOption(0.8,0.90,"F8",psr->param[param_f].fitFlag[8],colour);
     }
     else if (menu==3)
     {
@@ -3872,7 +3992,7 @@ void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,i
                             strcmp(psr[0].param[i].shortlabel[j],"POSEPOCH")!=0)
                     {
                         if (ypos+paramOffset*0.2 <= 0.9 && ypos+paramOffset*0.2 >= 0.5)
-                            drawOption(xpos,ypos+paramOffset*0.2,psr[0].param[i].shortlabel[j],psr->param[i].fitFlag[j]);
+                            drawOption(xpos,ypos+paramOffset*0.2,psr[0].param[i].shortlabel[j],psr->param[i].fitFlag[j],colour);
                         xpos+=0.1;
                         if (xpos > 0.9)
                         {
@@ -3900,6 +4020,11 @@ void drawMenu(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,i
     cpgrect(0.1,0.18,0.28,0.3+0.1); cpgsci(0); cpgtext(0.1,0.30,"New par"); cpgsci(1);
     cpgrect(0.2,0.28,0.28,0.3+0.1); cpgsci(0); cpgtext(0.2,0.30,"New tim"); cpgsci(1);
     cpgrect(0.3,0.38,0.28,0.3+0.1); cpgsci(0); cpgtext(0.3,0.30,"Restart"); cpgsci(1);
+    if (plk_mode != 0) {
+        char mode_string[100];
+        if (plk_mode == 1) sprintf(mode_string, "PLK Mode %d", plk_mode);
+        cpgtext(0,0.12,mode_string);
+    }
     /*  cpgrect(0.4,0.48,0.28,0.3+0.1); cpgsci(0); cpgtext(0.4,0.50,"Undo"); cpgsci(1);*/
 
 }
@@ -3914,28 +4039,11 @@ void drawMenu3(pulsar *psr, float plotx1,float plotx2,float ploty1,float ploty2,
     cpgsci(1);
     cpgtext(0.5,1.03,"x");
     cpgtext(0.6,1.03,"y");
-    drawAxisSel(0,1.0,"pre-fit",xplot==1,yplot==1);
-    drawAxisSel(0,0.94,"post-fit",xplot==2,yplot==2);
-    drawAxisSel(0,0.88,"date",xplot==3,yplot==3);
-    drawAxisSel(0,0.82,"orbital phase",xplot==4,yplot==4);
-    drawAxisSel(0,0.76,"serial",xplot==5,yplot==5);
-    drawAxisSel(0,0.70,"day of year",xplot==6,yplot==6);
-    drawAxisSel(0,0.64,"frequency",xplot==7,yplot==7);
-    drawAxisSel(0,0.58,"TOA error",xplot==8,yplot==8);
-    drawAxisSel(0,0.52,"year",xplot==10,yplot==10);
-    drawAxisSel(0,0.46,"elevation",xplot==11,yplot==11);
-    drawAxisSel(0,0.40,"rounded MJD",xplot==12,yplot==12);
-    drawAxisSel(0,0.34,"sidereal time",xplot==13,yplot==13);
-    drawAxisSel(0,0.28,"hour angle",xplot==14,yplot==14);
-    drawAxisSel(0,0.22,"para. angle",xplot==15,yplot==15);
-    if(psr[0].TNRedAmp != 0 && psr[0].TNRedGam != 0){
-        drawAxisSel(0,0.16,"Red Noise",xplot==16,yplot==16);
-    }
-    if(psr[0].TNDMAmp != 0 && psr[0].TNDMGam != 0){
-        drawAxisSel(0,0.10,"DM Var",xplot==17,yplot==17);
-    }
-    if(psr[0].TNChromAmp != 0 && psr[0].TNChromGam != 0 && psr[0].TNChromIdx !=0 ){
-        drawAxisSel(0,0.06,"Chrom. Noise",xplot==19,yplot==19);
+    for (unsigned idx = 0; idx < sizeof(plk_axis_selector_buttons)/sizeof(plk_axis_selector_buttons[0]); ++idx) {
+        const PlkAxisSelectorButton &button = plk_axis_selector_buttons[idx];
+        if (!plkAxisSelectorEnabled(psr, button.plot))
+            continue;
+        drawAxisSel(0, button.y_top, button.label, xplot==button.plot, yplot==button.plot);
     }
     
 
@@ -4072,10 +4180,10 @@ void drawAxisSel(float x,float y,const char *str,int sel1,int sel2)
     cpgrect(x+0.6,x+0.65,y,y-0.04); 
     cpgsci(1);
 }
-void drawOption(float x,float y,const char *str,int fit)
+void drawOption(float x,float y,const char *str,int fit,int colour)
 {
     if (fit==0) cpgsci(1);
-    else cpgsci(2);
+    else cpgsci(colour);
     cpgrect(x,x+0.015,y,y+0.08);
     cpgsci(1);
     if (strlen(str) > 7)
@@ -4494,7 +4602,7 @@ int setPlot(float *x,int count,pulsar *psr,int iobs,double unitFlag,int plotPhas
             if(psr[0].AverageResiduals == 1){x[count] = (float)(psr[0].obsn[iobs].averageres/unitFlag);}
             else if (psr[0].AverageDMResiduals ==1){x[count] = (float)(psr[0].obsn[iobs].averagedmres);}
 	    else if (psr[0].TNsubtractRed ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
-	    else if  (psr[0].TNsubtractDM ==1 || psr[0].TNsubtractChrom ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
+        else if  (psr[0].TNsubtractDM ==1 || psr[0].TNsubtractChrom ==1 || psr[0].TNsubtractSWGP ==1) {x[count] = (float)(psr[0].obsn[iobs].residualtn/unitFlag);}
 
         }
         else
@@ -4759,11 +4867,27 @@ int setPlot(float *x,int count,pulsar *psr,int iobs,double unitFlag,int plotPhas
     }
     else if (plot==19)
       {
-	double freq=(double) psr[0].obsn[iobs].freqSSB;
-	//fprintf(stderr, "%.3e\n", psr[0].obsn[iobs].TNChromErr*powf(freq/1e9,2));
-	double index=psr[0].TNChromIdx;
-	x[count]=(float)psr[0].obsn[iobs].TNChromSignal*powf(freq/1.4e9,index);
+        double freq=(double) psr[0].obsn[iobs].freqSSB;
+        longdouble yrs = (psr[0].obsn[iobs].sat - psr[0].param[param_dmepoch].val[0])/365.25;
+        longdouble arg = 1.0;
+        double cmDot=0;
+        double cmDotErr=0;
+        double series_fac=1.0;
+        for (int d=1;d<9;d++){
+            arg *= yrs;
+            if (psr[0].dm_series_type == series_taylor_pn) {
+                series_fac *= d;
+            }
+            if (psr[0].param[param_cm].paramSet[d]==1){
+                cmDot+=(double)(psr[0].param[param_cm].val[d]*arg/series_fac);
+            }
+        }	double index=psr[0].TNChromIdx;
+	    x[count]=(float)psr[0].obsn[iobs].TNChromSignal*powf(freq/1.4e9,index) + cmDot;
       }
+    else if (plot==20)
+    {
+        x[count]=(float)psr[0].obsn[iobs].SWGPSignal;
+    }
 
 
     else if (plot==18) // Plot on flag value
@@ -4834,6 +4958,7 @@ void setLabel(char *str,int plot,int plotPhase,double unitFlag,longdouble centre
     else if (plot==16) sprintf(str,"Red Noise (sec)");
     else if (plot==17) sprintf(str,"DM Variations (cm^-3 pc)");
     else if (plot==19) sprintf(str, "Chromatic noise at 1 GHz (sec)");
+    else if (plot==20) sprintf(str, "SWGP (sec)");
     else if (plot==18) sprintf(str,"%s",flagStr);
 }
 

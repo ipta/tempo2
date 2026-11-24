@@ -35,6 +35,7 @@
 #include <string.h>
 #include "tempo2.h"
 #include "TKmatrix.h"
+#include "t2fit_nestlike.h"
 
 void initialise(pulsar *psr,int noWarnings)
 {
@@ -139,6 +140,7 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
     psr->fixedFormat=0;
     psr->nStorePrecision=0;
     strcpy(psr->fjumpID,"");
+    psr->fdjump_pint_format = 0;
     strcpy(psr->deleteFileName,"NONE");
     strcpy(psr->tzrsite,"NULL");
     psr->refphs=REFPHS_MEAN;
@@ -206,6 +208,9 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
     psr->TNDMAmp = 0;
     psr->TNDMGam = 0;
     psr->TNDMC = 0;
+    psr->SWGPAmp = 0;
+    psr->SWGPGam = 0;
+    psr->SWGPC = 0;
     psr->TNDM_log_freqs = 0;
     psr->TNDM_log_factor = 2.0;
     psr->TNChromAmp = 0;
@@ -222,7 +227,9 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
     psr->TNsubtractDM=0;
     psr->TNsubtractRed=0;
     psr->TNsubtractChrom=0;
-    psr->TNsubtractPoly=1;
+    psr->TNsubtractSWGP=0;
+    psr->TNsubtractWhite=0;
+    psr->TNsubtractPoly=t2EncodeTNsubtractPoly(1,2,2,2); // Default to postfit quadratic subtraction for red, DM, and chromatic noise
     psr->TN_QpRatio=0;
     psr->TN_QpPeriod=0;
     psr->TN_QpSig=0;
@@ -541,6 +548,16 @@ void initialiseOne (pulsar *psr, int noWarnings, int fullSetup)
 
         sprintf(temp,"T0_%d (mjd)",k+1); strcpy(psr->param[param_t0].label[k],temp);
         sprintf(temp,"T0_%d",k+1); strcpy(psr->param[param_t0].shortlabel[k],temp);
+
+        sprintf(temp,"XDOT_%d",k+1); strcpy(psr->param[param_a1dot].label[k],temp);
+        sprintf(temp,"XDOT_%d",k+1); strcpy(psr->param[param_a1dot].shortlabel[k],temp);
+
+        sprintf(temp,"X2DOT_%d",k+1); strcpy(psr->param[param_a2dot].label[k],temp);
+        sprintf(temp,"X2DOT_%d",k+1); strcpy(psr->param[param_a2dot].shortlabel[k],temp);
+
+        sprintf(temp,"PBDOT_%d",k+1); strcpy(psr->param[param_pbdot].label[k],temp);
+        sprintf(temp,"PBDOT_%d",k+1); strcpy(psr->param[param_pbdot].shortlabel[k],temp);
+
     }
     strcpy(psr->param[param_pb].label[0],"PB (d)");
     strcpy(psr->param[param_pb].shortlabel[0],"PB");
@@ -769,7 +786,7 @@ void allocateMemory(pulsar *psr, int realloc)
         if (i==param_dm)      psr->param[i].aSize = MAX_DM_DERIVATIVES;
 	else if (i==param_cm)  psr->param[i].aSize = MAX_DM_DERIVATIVES;
         else if (i==param_f)  psr->param[i].aSize = MAX_FREQ_DERIVATIVES;
-        else if (i==param_pb || i==param_ecc || i==param_om || i==param_t0 || i==param_a1) 
+        else if (i==param_pb || i==param_ecc || i==param_om || i==param_t0 || i==param_a1 || i==param_a1dot || i==param_a2dot || i==param_pbdot)
             psr->param[i].aSize = MAX_COMPANIONS;
         else if (i==param_fb)
             psr->param[i].aSize = 20;

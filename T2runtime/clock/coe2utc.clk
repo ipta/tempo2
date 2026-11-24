@@ -1,0 +1,5 @@
+# UTC(coe) UTC 100
+# This file deals with data at the "COE" site, which do not really have any clock corrections
+40000 0
+99999 0
+

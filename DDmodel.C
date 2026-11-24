@@ -53,8 +53,10 @@ longdouble DDmodel(pulsar *psr,int p,int ipos,int param)
     if (displayCVSversion == 1) CVSdisplayVersion("DDmodel.C","DDmodel()",CVS_verNum);
 
 
-    dr = 0.0; /* WHAT SHOULD THESE BE SET TO? */
-    dth = 0.0; 
+    if (psr[p].param[param_dr].paramSet[0]==1) dr = getParameterValue(&psr[p],param_dr,0);
+    else dr = 0.0;
+    if (psr[p].param[param_dtheta].paramSet[0]==1) dth = getParameterValue(&psr[p],param_dtheta,0);
+    else dth = 0.0;
 
     if (psr[p].param[param_sini].paramSet[0]==1) si = getParameterValue(&psr[p],param_sini,0);
     else si = 0.0;

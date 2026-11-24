@@ -130,11 +130,19 @@ void averageDMResiduals(pulsar *psr, int npsr){
                 {
                     resid -= psr[0].obsn[o].TNDMSignal;
                 }
+                if (psr[0].TNsubtractSWGP ==1)
+                {
+                    resid -= psr[0].obsn[o].SWGPSignal;
+                }
                 if (psr[0].TNsubtractChrom ==1)
                 {
                     resid -= psr[0].obsn[o].TNChromSignal;
                 }
 
+                if (psr[0].TNsubtractWhite ==1)
+                {
+                    resid -= psr[0].obsn[o].TNWhiteSignal;
+                }
 
 
                 int bin = floor(((double)psr[0].obsn[o].bat-mintime)/timestep);
@@ -301,10 +309,19 @@ void averageResiduals(pulsar *psr, int npsr){
 		  {
 		    resid -= (double) psr[0].obsn[o].TNDMSignal;
 		  }
+        if (psr[0].TNsubtractSWGP ==1)
+          {
+            resid -= (double) psr[0].obsn[o].SWGPSignal;
+          }
 		if (psr[0].TNsubtractChrom ==1)
 		  {
 		    resid -= (double) psr[0].obsn[o].TNChromSignal;
 		  }
+
+        if (psr[0].TNsubtractWhite ==1)
+          {
+            resid -= (double) psr[0].obsn[o].TNWhiteSignal;
+          }
 
 		AverageRes[flagindex][bin] += resid/adjustedErr;
                 AverageBat[flagindex][bin] += (double)psr[0].obsn[o].bat/adjustedErr;
@@ -437,6 +454,36 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
         tnmean=longdouble(0.0);
         ntnmean=0;
 
+
+/*        int closest_to_centre_i=-1;
+        // find the centre ToA for pulse number reference. This should be the same ToA used for TZR computation later.
+        if (((double)psr[p].param[param_track].val[0] == -2) && psr[p].nobs > 0) {
+            longdouble centrePos;
+            longdouble closestV,check;
+            centrePos = (psr[p].param[param_start].val[0]+
+                    psr[p].param[param_finish].val[0])/longdouble(2.0);
+
+            for (i=0;i<psr[p].nobs;i++)
+            {
+                if (psr[p].obsn[i].deleted==0)
+                {
+                    check = fabs(psr[p].obsn[i].sat-centrePos);
+                    if (closest_to_centre_i==-1 || (check < closestV))
+                    {
+                        closestV = check;
+                        closest_to_centre_i = i;
+                    }
+                }
+            }
+            if (closest_to_centre_i==-1)
+            {
+                closest_to_centre_i=0;
+            }
+        }*/
+
+
+
+
         if(psr[p].refphs==REFPHS_TZR){
             // reinstate the extra TZR observation so we can compute the reference phase
             if (psr[p].nobs==MAX_OBSN){
@@ -446,6 +493,8 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
             psr[p].nobs++;
             memcpy(&(psr[p].obsn[psr[p].nobs-1]),&(psr[p].tzrobs),sizeof(observation));
         }
+
+
 
         for (i=0;i<psr[p].nobs;i++)
         {
@@ -711,7 +760,24 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
                 }
             }
     
-            // add in the newfdjumps	    
+
+            /* Add FD parameters */
+            // FD parameters used to be added to tdis1 in dm_delays, but more logical to add them here since
+            // we attribute these delays to profile evolution/template matching, and hence they affect phase
+            // rather than observation time. This affects the binary model.
+            if (psr[p].param[param_fddc].paramSet[0]==1 && psr[p].obsn[i].freqSSB>1)
+                phaseJ -=
+                    (psr[p].param[param_fddc].val[0] /
+                    powl((longdouble)psr[p].obsn[i].freqSSB * 1.0e-6L,
+                    psr[p].param[param_fddi].val[0]))
+                    *psr[p].param[param_f].val[0];
+            for (k=0; k<psr[p].param[param_fd].aSize; k++) {
+                if (psr[p].param[param_fd].paramSet[k]==1 && psr[p].obsn[i].freqSSB>1)
+                    phaseJ -= psr[p].param[param_fd].val[k] *
+                            powl(logl((longdouble)psr[p].obsn[i].freqSSB / 1.0e9L), k+1) *
+                            psr[p].param[param_f].val[0];
+            }
+            // Add FDJUMPs
             for (k=1;k<=psr[p].nfdJumps;k++)	    
             {
                 for (l=0;l<psr[p].obsn[i].obsNfdjump;l++)
@@ -2348,7 +2414,12 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
 
 
 
-        if ((psr[p].TNsubtractDM ==1) || ( psr[p].TNsubtractRed ==1) || (psr[p].TNsubtractChrom ==1))
+        if ((psr[p].TNsubtractDM ==1) || 
+                (psr[p].TNsubtractRed ==1) || 
+                (psr[p].TNsubtractChrom ==1) || 
+                (psr[p].TNsubtractSWGP ==1) || 
+                (psr[p].TNsubtractWhite ==1)   
+            )
         {
             for(i=0;i<=psr[p].nobs; i++)
             {
@@ -2368,10 +2439,20 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
                     psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNDMSignal;
                 }
 
+                if (psr[p].TNsubtractSWGP ==1)
+                {
+                    psr[p].obsn[i].residualtn-=psr[p].obsn[i].SWGPSignal;
+                }
+
 
                 if (psr[p].TNsubtractChrom ==1)
                 {
                     psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNChromSignal;
+                }
+
+                if (psr[p].TNsubtractWhite ==1)
+                {
+                    psr[p].obsn[i].residualtn-=psr[p].obsn[i].TNWhiteSignal;
                 }
 
 
@@ -2412,4 +2493,3 @@ void formResiduals(pulsar *psr,int npsr,int removeMean)
     delete[] phase5;
     logtchk("Leave formresiduals()");
 }
-

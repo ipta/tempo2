@@ -34,12 +34,14 @@
 #include <ctype.h>
 #include "tempo2.h"
 #include "tempo2Util.h"
+#include "t2fit_nestlike.h"
 
 int readValue(pulsar *psr,char *pmtr,FILE *fin,parameter *parameter,int arr);
 void getValue(char *str,int v1,int v2,pulsar *psr,int l,int arr);
 void removeCR(char *str);
 void checkLine(pulsar *p,char *str,FILE *fin,parameter *elong,parameter *elat);
 void checkAllSet(pulsar *psr,parameter elong,parameter elat,char *filename);
+static void checkBinaryParameterConsistency(pulsar *psr);
 
 /* Function to set up default parameters before reading a .par file */
 int setupParameterFileDefaults(pulsar *psr)
@@ -150,6 +152,7 @@ void readParfileGlobal(pulsar *psr,int npsr,char tpar[MAX_STRLEN][MAX_FILELEN],
                 checkLine(psr+p,str,fin,&elong,&elat);
         }
         fclose(fin);
+        checkBinaryParameterConsistency(psr+p);
     }
 }
 
@@ -336,73 +339,124 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         }
 
     }
+    else if (strcasecmp(str,"FDDC")==0)/* Frequency dependent delay */
+        readValue(psr,str,fin,&(psr->param[param_fddc]),0);
+    else if (strcasecmp(str,"FDDI")==0) /* Frequency dependent delay */
+        readValue(psr,str,fin,&(psr->param[param_fddi]),0);
+    /** For reasons related to PINT and tempo2 divergence we have to handle
+     * FD parameter carefully. Particularly, the FDJUMP parameter has two different
+     * versions. One is FDxxJUMP and one is FDJUMPxx, where xx is any integer.
+     */
+    else if (strncasecmp(str,"FD",2)==0)
+    {
 
-    else if (strncasecmp(str, "FDJUMP",6)==0) {
-        if (strncasecmp(str, "FDJUMP_SCALE",12)==0) {
-            char rest[1024];
-            char scale[80];
-            fgets(rest, 1024, fin);
-            sscanf(rest, "%s", scale);
-            if (strncasecmp(scale, "LINEAR",10)==0) {
-                psr->fdjump_log=0; // not log scale
-            } else {
-                psr->fdjump_log=1; // log scale
-            }
+        logdbg("Got an FD-related parameter: %s",str);
+        /* FD parameter */
+        int fval;
+        int consumed;
+        if (sscanf(str+2,"%d%n",&fval,&consumed)==1 && str[2+consumed]=='\0')
+        {
+            logdbg("Interpret as an FD parameter with index %d",fval);
+            if (fval<psr->param[param_f].aSize)
+                readValue(psr,str,fin,&(psr->param[param_fd]),fval-1);
         } else {
-            int idx=0;
-            if (strncasecmp(str, "FDJUMPDM",8)==0) { // Is DMJUMP
-                idx = -2;
-            } else { // Index of regular FDJUMP
-                sscanf(str+6,"%d", &idx);
-            }
-
-            if (idx != 0) {
+            /** A variety of FDJUMP parameters... */
+            /* first check for FDJUMP_SCALE or FDJUMPLOG parameter.
+            * FDJUMP_SCALE LOG or LINEAR
+            * FDJUMPLOG Y or N
+            * are the same.
+            */
+            logdbg("Got an FDJUMP related parameter: %s",str);
+            if (strncasecmp(str, "FDJUMP_SCALE",12)==0) {
+                logdbg("Interpret as an FDJUMP_SCALE parameter");
+                    char rest[1024];
+                    char scale[80];
+                    fgets(rest, 1024, fin);
+                    sscanf(rest, "%s", scale);
+                    if (strncasecmp(scale, "LINEAR",10)==0) {
+                        psr->fdjump_log=0; // not log scale
+                        logdbg("FDJUMP SCALE is LINEAR");
+                    } else {
+                        psr->fdjump_log=1; // log scale
+                        logdbg("FDJUMP SCALE is LOG");
+                    }
+            } else if (strncasecmp(str,"FDJUMPLOG",9)==0) {
+                logdbg("Interpret as an FDJUMPLOG parameter");
+                psr->fdjump_pint_format = 1; // FDxJUMP (PINT) format
                 char rest[1024];
-                char str1[100],str2[100],str3[100],str4[100],str5[100];
-                int v5,nread;
-
+                char scale[80];
                 fgets(rest, 1024, fin);
-                removeCR(rest);
-                psr->nfdJumps++;
-                strcpy(psr->fdjumpStr[psr->nfdJumps],rest);
-                // get the index of the FD parameter
-                psr->fdjumpIdx[psr->nfdJumps]=idx;
+                sscanf(rest, "%s", scale);
+                if (strncasecmp(scale, "N",10)==0) {
+                    psr->fdjump_log=0; // not log scale
+                    logdbg("FDJUMP SCALE is LINEAR");
+                } else {
+                    psr->fdjump_log=1; // log scale
+                    logdbg("FDJUMP SCALE is LOG");
+                }
+            } else {
+                logdbg("Interpret as an FDJUMP parameter");
+                /* FDJUMP parameter. First we work out the index */
+                int idx=0;
 
-
-
-
-                psr->fitfdJump[psr->nfdJumps]=1; /* Default: fit for fdjump */
-                v5 = -1;
-                nread = sscanf(psr->fdjumpStr[psr->nfdJumps],"%s %s %s %s %s",str1,str2,str3,str4,str5);
-
-                if (strcasecmp(str1,"MJD")==0 || strcasecmp(str1,"FREQ")==0)
-                {
-                    if (nread>3)
-                    {
-                        sscanf(str4,"%lf",&(psr->fdjumpVal[psr->nfdJumps]));
-                        if (sscanf(str5,"%d",&v5)==1)
-                        {
-                            if (v5!=1) psr->fitfdJump[psr->nfdJumps]=0;
-                        }   
-                        else
-                            psr->fitfdJump[psr->nfdJumps]=0;
+                // FDJUMPDM is a special case.
+                if (strncasecmp(str, "FDJUMPDM",8)==0) { // Is DMJUMP
+                    logdbg("Interpret as an FDJUMPDM parameter");
+                    idx = -2;
+                } else { 
+                    // either the index is after FDJUMP or after FD.
+                    if (strncasecmp(str, "FDJUMP",6)==0) {
+                        sscanf(str+6,"%d", &idx);
+                    } else if (strncasecmp(str, "FD",2)==0) {
+                        sscanf(str+2,"%d", &idx);
+                        psr->fdjump_pint_format = 1; // FDxJUMP (PINT) format
                     }
                 }
-                else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
-                {
-                    if (nread>2)
+                logdbg("FDJUMP index is %d",idx);
+
+                if (idx != 0) {
+                    char rest[1024];
+                    char str1[100],str2[100],str3[100],str4[100],str5[100];
+                    int v5,nread;
+
+                    fgets(rest, 1024, fin);
+                    removeCR(rest);
+                    psr->nfdJumps++;
+                    strcpy(psr->fdjumpStr[psr->nfdJumps],rest);
+                    // get the index of the FD parameter
+                    psr->fdjumpIdx[psr->nfdJumps]=idx;
+                    psr->fitfdJump[psr->nfdJumps]=1; /* Default: fit for fdjump */
+                    v5 = -1;
+                    nread = sscanf(psr->fdjumpStr[psr->nfdJumps],"%s %s %s %s %s",str1,str2,str3,str4,str5);
+
+                    if (strcasecmp(str1,"MJD")==0 || strcasecmp(str1,"FREQ")==0)
                     {
-                        sscanf(str3,"%lf",&(psr->fdjumpVal[psr->nfdJumps]));
-                        if (sscanf(str4,"%d",&v5)==1)
+                        if (nread>3)
                         {
-                            if (v5!=1) psr->fitfdJump[psr->nfdJumps]=0;
+                            sscanf(str4,"%lf",&(psr->fdjumpVal[psr->nfdJumps]));
+                            if (sscanf(str5,"%d",&v5)==1)
+                            {
+                                if (v5!=1) psr->fitfdJump[psr->nfdJumps]=0;
+                            }   
+                            else
+                                psr->fitfdJump[psr->nfdJumps]=0;
                         }
-                        else
-                            psr->fitfdJump[psr->nfdJumps]=0;
+                    }
+                    else if (strcasecmp(str1,"NAME")==0 || strcasecmp(str1,"TEL")==0 || str1[0]=='-')
+                    {
+                        if (nread>2)
+                        {
+                            sscanf(str3,"%lf",&(psr->fdjumpVal[psr->nfdJumps]));
+                            if (sscanf(str4,"%d",&v5)==1)
+                            {
+                                if (v5!=1) psr->fitfdJump[psr->nfdJumps]=0;
+                            }
+                            else
+                                psr->fitfdJump[psr->nfdJumps]=0;
+                        }
                     }
                 }
             }
-
         }
     }
     else if (strcasecmp(str,"EPHEM")==0)
@@ -680,6 +734,17 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 readValue(psr,str,fin,&(psr->param[param_nudot_amp]),gval-1);
         }
     }
+    else if (strstr(str,"NUDOT_AMP")!=NULL){
+        // One amp for all, assume that Nudot epoch was already loaded
+        readValue(psr,str,fin,&(psr->param[param_nudot_amp]),0);
+        double sign=1.0;
+        for (int tmpi=0; tmpi<psr->param[param_nudot_amp].aSize; tmpi++){
+            psr->param[param_nudot_amp].val[tmpi] = sign* psr->param[param_nudot_amp].val[0];
+            psr->param[param_nudot_amp].prefit[tmpi] =  psr->param[param_nudot_amp].val[tmpi];
+            psr->param[param_nudot_amp].fitFlag[tmpi] = 0;
+            sign*=-1;
+        }
+    }
     else if (strstr(str,"NUDOT_TIME_")!=NULL){
         if (sscanf(str+11,"%d",&gval)==1)
         {
@@ -690,8 +755,13 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
     else if (strstr(str,"NUDOT_EPOCH_")!=NULL){
         if (sscanf(str+12,"%d",&gval)==1)
         {
-            if (gval<psr->param[param_nudot_epoch].aSize)
+            if (gval<psr->param[param_nudot_epoch].aSize){
                 readValue(psr,str,fin,&(psr->param[param_nudot_epoch]),gval-1);
+                for (int tmpi=0; tmpi<gval; tmpi++){
+                    // mark the corresponding amplituide as set so that it gets used if we had a single NUDOT_AMP parameter for all epochs
+                    psr->param[param_nudot_amp].paramSet[tmpi] = 1;                    
+                }
+            }
         }
     }
     else if  (strstr(str,"EXPEP_")!=NULL || strstr(str,"expep_")!=NULL)
@@ -792,19 +862,6 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         readValue(psr,str,fin,&(psr->param[param_tspan]),0);
     else if (strcasecmp(str,"TZRFRQ")==0 || strcasecmp(str,"TZRFREQ")==0)      /* TZRFRQ */
         readValue(psr,str,fin,&(psr->param[param_tzrfrq]),0);
-    else if (strcasecmp(str,"FDDC")==0)/* Frequency dependent delay */
-        readValue(psr,str,fin,&(psr->param[param_fddc]),0);
-    else if (strcasecmp(str,"FDDI")==0) /* Frequency dependent delay */
-        readValue(psr,str,fin,&(psr->param[param_fddi]),0);
-    else if (strncasecmp(str,"FD",2)==0 && (str[2]!=' '))
-    {
-        int fval;
-        if (sscanf(str+2,"%d",&fval)==1)
-        {
-            if (fval<psr->param[param_f].aSize)
-                readValue(psr,str,fin,&(psr->param[param_fd]),fval-1);
-        }
-    }
     else if (strcasecmp(str,"DSHK")==0) /* Shklovskii term distance (kpc) */
         readValue(psr,str,fin,&(psr->param[param_dshk]),0);
     else if (strcasecmp(str,"START")==0)      /* START */
@@ -1760,20 +1817,57 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         fscanf(fin,"%lf",&(psr->TNRedCorner));
     else if(strcasecmp(str,"TNsubtractRed")==0)
         fscanf(fin,"%d",&(psr->TNsubtractRed));
+    else if(strcasecmp(str,"TNsubtractWhite")==0)
+        fscanf(fin,"%d",&(psr->TNsubtractWhite));
     else if (strcasecmp(str,"TNDMAmp")==0) /* TempoNest Red noise power law amplitude */
         fscanf(fin,"%lf",&(psr->TNDMAmp));
     else if (strcasecmp(str,"TNDMGam")==0) /* TempoNest Red noise spectral index */
         fscanf(fin,"%lf",&(psr->TNDMGam));
     else if (strcasecmp(str,"TNDMC")==0) /* TempoNest Red noise spectral index */
         fscanf(fin,"%d",&(psr->TNDMC));
+    else if (strcasecmp(str,"SWGPAmp")==0) /* Enterprise log10_A_dm_sw mapped to tempo2 SWGP amplitude */
+        fscanf(fin,"%lf",&(psr->SWGPAmp));
+    else if (strcasecmp(str,"SWGPGam")==0) /* Enterprise gamma_dm_sw mapped to tempo2 SWGP spectral index */
+        fscanf(fin,"%lf",&(psr->SWGPGam));
+    else if (strcasecmp(str,"SWGPC")==0) /* Number of harmonic SWGP Fourier modes */
+        fscanf(fin,"%d",&(psr->SWGPC));
     else if (strcasecmp(str,"TNDMFLog")==0)
         fscanf(fin,"%d",&(psr->TNDM_log_freqs));
     else if (strcasecmp(str,"TNDMFLog_factor")==0)
         fscanf(fin,"%lf",&(psr->TNDM_log_factor));
     else if(strcasecmp(str,"TNsubtractDM")==0)
         fscanf(fin,"%d",&(psr->TNsubtractDM));
+    else if(strcasecmp(str,"TNsubtractSWGP")==0)
+        fscanf(fin,"%d",&(psr->TNsubtractSWGP));
     else if(strcasecmp(str, "TNsubtractPoly")==0)
-        fscanf(fin,"%d",&(psr->TNsubtractPoly));
+    {
+        char packedVal[128];
+        fscanf(fin, "%127s", packedVal);
+        uint64_t flags = strtoull(packedVal, NULL, 0) & 0xFFULL;
+        psr->TNsubtractPoly = t2EncodeTNsubtractPoly(
+                flags,
+                t2DecodeTNRedSubPolyOrd(psr->TNsubtractPoly),
+                t2DecodeTNDMSubPolyOrd(psr->TNsubtractPoly),
+                t2DecodeTNChromSubPolyOrd(psr->TNsubtractPoly));
+    }
+    else if(strcasecmp(str, "TNRedSubPolyOrd")==0)
+    {
+        int ord;
+        fscanf(fin, "%d", &ord);
+        psr->TNsubtractPoly = t2SetTNRedSubPolyOrd(psr->TNsubtractPoly, ord);
+    }
+    else if(strcasecmp(str, "TNDMSubPolyOrd")==0)
+    {
+        int ord;
+        fscanf(fin, "%d", &ord);
+        psr->TNsubtractPoly = t2SetTNDMSubPolyOrd(psr->TNsubtractPoly, ord);
+    }
+    else if(strcasecmp(str, "TNChromSubPolyOrd")==0)
+    {
+        int ord;
+        fscanf(fin, "%d", &ord);
+        psr->TNsubtractPoly = t2SetTNChromSubPolyOrd(psr->TNsubtractPoly, ord);
+    }
     else if (strcasecmp(str,"TN_QpPeriod")==0) /* Quasi-periodic Timing Noise*/
         fscanf(fin,"%lf",&(psr->TN_QpPeriod));
     else if (strcasecmp(str,"TN_QpLam")==0) /* Quasi-periodic Timing Noise*/
@@ -2038,7 +2132,7 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
             if (psr->nCompanion==0) psr->nCompanion=1;
         }
         else if ((strcasecmp(str,"PBDOT")!=0) && (str[0]=='P' || str[0]=='p') &&  /* Higher Pb derivatives */
-		 (str[1]=='B' || str[1]=='b') && (strcasecmp(str,"PB2DOT")!=0))
+                (str[1]=='B' || str[1]=='b') && (str[2]=='_') && (strcasecmp(str,"PB2DOT")!=0))
         {
             int pbval;
             if (sscanf(str+3,"%d",&pbval)==1)
@@ -2084,6 +2178,16 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 psr->param[param_pbdot].val[0]*=1.0e-12;
             psr->param[param_pbdot].prefit[0] = psr->param[param_pbdot].val[0];
         }
+        else if (strcasecmp(str,"PBDOT")!=0 && (str[0]=='P' || str[0]=='p') && (str[1]=='B' || str[1] == 'b') && (str[2]=='D' || str[2]=='d'))
+        {
+            int val;
+            if (sscanf(str+6,"%d",&val)==1)
+            {
+                if (val-1<psr->param[param_pbdot].aSize)
+                    readValue(psr,str,fin,&(psr->param[param_pbdot]),val-1);
+            }
+        }
+
 	else if (strcasecmp(str,"PB2DOT")==0)
         {
             readValue(psr,str,fin,&(psr->param[param_pb2dot]),0);
@@ -2108,6 +2212,29 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
                 psr->param[param_a1dot].val[0]*=1.0e-12;
             psr->param[param_a1dot].prefit[0] = psr->param[param_a1dot].val[0];
         }
+        else if (strcasecmp(str,"XDOT")!=0 && (str[0]=='X' || str[0]=='x') &&
+                (str[1]=='D' || str[1]=='d'))
+        {
+            int val;
+            if (sscanf(str+5,"%d",&val)==1)
+            {
+                if (val-1<psr->param[param_a1dot].aSize)
+                    readValue(psr,str,fin,&(psr->param[param_a1dot]),val-1);
+            }
+        }
+
+        else if (strcasecmp(str,"X2DOT")!=0 && (str[0]=='X' || str[0]=='x') &&
+                (str[1]=='2') && (str[2]=='D' || str[2]=='d'))
+        {
+            /* X2DOT_n: per-companion second derivative of A1 (A1DOT2) */
+            int val;
+            if (sscanf(str+6,"%d",&val)==1)
+            {
+                if (val-1<psr->param[param_a2dot].aSize)
+                    readValue(psr,str,fin,&(psr->param[param_a2dot]),val-1);
+            }
+        }
+
         else if ( strcasecmp(str,"X2DOT")==0)
         {
             // Ryan: set this value which is used in THE MSS model plugin
@@ -2163,7 +2290,7 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         }else if( strcasecmp( str, "STIG" ) == 0 ){
             // Stigma Shapiro delay harmonic ratio for DDH model (FW10)
             readValue( psr, str, fin, &( psr->param[param_stig] ), 0 );
-        }else if( strcasecmp( str, "NHARM" ) == 0 ){
+        }else if( (strcasecmp( str, "NHARM" ) == 0 ) || (strcasecmp( str, "NHARMS" ) == 0 ) ){
             // Number of Shapiro delay harmonics to be used for DDH model (FW10)
             readValue( psr, str, fin, &( psr->param[param_nharm] ), 0 );
         }
@@ -2267,6 +2394,38 @@ void checkLine(pulsar *psr,char *str,FILE *fin,parameter *elong, parameter *elat
         {
             displayMsg(1,(char *)"MISC1",(char *)"Unknown parameter in par file: ",str,psr->noWarnings);
         }
+}
+
+static void checkBinaryParameterConsistency(pulsar *psr)
+{
+    int anyFB = 0;
+    for (int j=0;j<psr->param[param_fb].aSize;j++)
+    {
+        if (psr->param[param_fb].paramSet[j]==1)
+        {
+            anyFB = 1;
+            break;
+        }
+    }
+
+    if (strcasecmp(psr->binaryModel,"DDGR")==0 && anyFB==1)
+    {
+        logerr("BINARY DDGR does not support FB parameters; "
+               "use PB/PBDOT or select a binary model that evaluates FBn.");
+        exit(1);
+    }
+
+    if (strcasecmp(psr->binaryModel,"ELL1")==0 &&
+            psr->param[param_fb].paramSet[1]==1 &&
+            psr->param[param_pbdot].paramSet[0]==1)
+    {
+        displayMsg(1,"BINFB1",
+                "Both PBDOT and FB1 are set for ELL1; explicit FB1 takes "
+                "precedence and PBDOT is disabled.",
+                "",psr->noWarnings);
+        psr->param[param_pbdot].paramSet[0] = 0;
+        psr->param[param_pbdot].fitFlag[0] = 0;
+    }
 }
 
 void checkAllSet(pulsar *psr,parameter elong,parameter elat,char *filename)
@@ -2384,6 +2543,7 @@ void checkAllSet(pulsar *psr,parameter elong,parameter elat,char *filename)
             printf("-> Using %s instead.(You should set CLK to what you really mean!)\n", clk);
         strcpy(psr->clock, clk);
     }
+    checkBinaryParameterConsistency(psr);
 }
 
 /* ******************************************** */

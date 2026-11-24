@@ -1,6 +1,6 @@
 #ifndef _TKlog_h
 #define _TKlog_h
-#define TK_MAX_ERRORS 24
+#define TK_MAX_ERRORS 30
 #define TK_MAX_ERROR_LEN 360
 
 #ifdef __cplusplus
@@ -41,9 +41,9 @@ extern "C" {
 #define WHERESTR  "[%s:%d] "
 #define WHEREARG  __FILE__, __LINE__
 #define ENDL "\n"
-#define WHEREERR ERRORCOLOR "***ERROR***\n [%s:%d] " RESETCOLOR
+#define WHEREERR ERRORCOLOR "[%s:%d] ERROR:" RESETCOLOR
 #define WHEREWARN BOLDCOLOR "[%s:%d] " WARNCOLOR "Warning: " RESETCOLOR
-#define ENDERR "\n***!!!!!***"
+#define ENDERR ""
 #define WHERETCHK "[%s:%d] T=%.2f s: "
 #define _LOG(_fmt,...) _TKchklog(LOG_OUTFILE,_fmt,##__VA_ARGS__)
 //fprintf(LOG_OUTFILE,_TKchklog(_fmt),##__VA_ARGS__)

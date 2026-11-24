@@ -23,13 +23,13 @@ double t2FitFunc_ne_sw_ifunc(pulsar *psr, int ipsr ,double x ,int ipos ,param_la
 void t2UpdateFunc_ne_sw_ifunc(pulsar *psr, int ipsr ,param_label label,int k, double val, double error) {
     assert(k < psr[ipsr].ne_sw_ifuncN);
     psr[ipsr].ne_sw_ifuncV[k] += val;
-    psr[ipsr].ne_sw_ifuncE[k] = error;
+    if(error >= 0)psr[ipsr].ne_sw_ifuncE[k] = error;
 }
 
 void t2UpdateFunc_ne_sw(pulsar *psr, int ipsr ,param_label label,int k, double val, double error) {
     assert(label==param_ne_sw);
     psr[ipsr].param[label].val[k] += val;
-    psr[ipsr].param[label].err[k] = error;
+    if(error >= 0)psr[ipsr].param[label].err[k] = error;
     psr[ipsr].ne_sw = psr[ipsr].param[label].val[k];
 }
 
