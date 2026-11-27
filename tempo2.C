@@ -491,12 +491,12 @@ int main(int argc, char *argv[])
             }
             ChebyModelSet_Write(&cms, f);
             fclose(f);
-            long double rms, mav; // long double only for predictors
+            longdouble rms, mav;
             ChebyModelSet_Test(&cms, psr, ntimecoeff*5*cms.nsegments, 
                     nfreqcoeff*5*cms.nsegments, &rms, &mav);
             printf("Predictive model constructed and written to t2pred.dat.\n");
             printf("RMS error = %.3Lg s MAV= %.3Lg s\n", 
-                    rms/static_cast<long double>(psr[0].param[param_f].val[0]), static_cast<long double>(mav/psr[0].param[param_f].val[0]));
+                    static_cast<long double>(rms/psr[0].param[param_f].val[0]), static_cast<long double>(mav/psr[0].param[param_f].val[0]));
             ChebyModelSet_Destroy(&cms);
         }
 

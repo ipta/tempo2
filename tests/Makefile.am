@@ -1,7 +1,7 @@
 AM_DEFAULT_SOURCE_EXT=.C
 
 
-test_programs=testTKfit testTempo2 testEndToEnd
+test_programs=testTKfit testTempo2 testEndToEnd testPredictor testPredictorCpp
 LOG_DRIVER=$(srcdir)/custom-test-driver
 
 noinst_LTLIBRARIES=libgtest.la
@@ -29,4 +29,10 @@ libgtest_la_SOURCES=gtest-1.7.0/src/gtest-all.cc
 testTKfit_LDADD=libgtest.la ../libt2toolkit.la @PTHREAD_LIBS@ @PTHREAD_CFLAGS@ $(LIBADD_DLOPEN)
 testTempo2_LDADD=libgtest.la ../libtempo2.la @PTHREAD_LIBS@ @PTHREAD_CFLAGS@ $(LIBADD_DLOPEN)
 testEndToEnd_LDADD=libgtest.la ../libtempo2.la @PTHREAD_LIBS@ @PTHREAD_CFLAGS@ $(LIBADD_DLOPEN)
+testPredictor_SOURCES=testPredictor.c ../python/t2pred/t2pred_loops.c
+testPredictor_LDADD=../libtempo2pred.la
+testPredictorCpp_LDADD=../libtempo2pred.la
+if HAVE_FLOAT128
+testPredictor_CPPFLAGS=$(AM_CPPFLAGS) -DTEST_PREDICTOR_PRECISE
+endif
 

@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.57)
-AC_INIT([Tempo2],[2026.10.1],[mkeith@pulsarastronomy.net],[],[https://github.com/ipta/tempo2/])
+AC_INIT([Tempo2],[2026.11.1],[mkeith@pulsarastronomy.net],[],[https://github.com/ipta/tempo2/])
 
 AC_ARG_VAR([TEMPO2], [Default TEMPO2 installation directory])
 AC_PREFIX_DEFAULT([${TEMPO2:-"/usr/local"}])
@@ -74,9 +74,19 @@ AS_IF([test "x$enable_float128" != "xno"], [
        AC_MSG_RESULT($have_float128)
 
        AS_IF([test "x$have_float128" != "xno"], [
-              AC_CHECK_LIB(quadmath, cosq,[LDFLAGS="$LDFLAGS -lquadmath"],have_float128=no)
+              AC_CHECK_LIB(quadmath, cosq,[
+                     quadmath_archive=`$CC -print-file-name=libquadmath.a 2>/dev/null`
+                     AS_IF([test -f "$quadmath_archive"], [
+                            quadmath_dir=`dirname "$quadmath_archive"`
+                            LIBS="$LIBS -L$quadmath_dir"
+                     ])
+                     LIBS="$LIBS -lquadmath"
+              ],[have_float128=no])
        ])
 
+       AS_IF([test "x$have_float128" != "xyes"], [
+              AC_MSG_ERROR([--enable-float128 requires compiler __float128 and libquadmath support])
+       ])
        ])
 
 if test X$have_float128 != Xyes; then

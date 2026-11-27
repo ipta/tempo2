@@ -29,6 +29,9 @@
 #define TEMPO2PRED_H
 
 #include <stdio.h>
+#include <stdint.h>
+
+#define T2PREDICTOR_API_VERSION 2
 
 #ifdef __cplusplus
 #include <string>
@@ -46,24 +49,9 @@ extern "C" {
     /*       its associated functions declared further down            */
     /*******************************************************************/
 
-    /* Basic Chebyshev polynomial */
-    typedef struct 
-    {
-        int nx, ny;
-        long double *coeff;
-    } Cheby2D;
-
-    /* Chebyshev predictive phase model */
-    typedef struct
-    {
-        char psrname[64];
-        char sitename[64];
-        long double mjd_start, mjd_end;
-        long double freq_start, freq_end;
-        long double dispersion_constant; // phase = polyco + d_c/f^2
-        Cheby2D cheby;
-        Cheby2D frequency_cheby;
-    } ChebyModel;
+    /* Segment contents are private and depend on the configured precision. */
+    typedef struct ChebyModel ChebyModel;
+    typedef struct T1Polyco T1Polyco;
 
     /* Set of Chebyshev predictive phase models */
     typedef struct
@@ -74,27 +62,6 @@ extern "C" {
 
     /* Flag set by ChebyModelSet_GetNearest when mjd is out of range */
     extern int ChebyModelSet_OutOfRange;
-
-    /* TEMPO1-style Taylor series polynomial predictive phase model */
-    typedef struct
-    {
-        char psrname[64];
-        char date_string[10];
-        char utc_string[13];
-        long double mjd_mid;
-        double dm;
-        double doppler;
-        double log10rms;
-        long double reference_phase;
-        long double frequency_psr_0;
-        char sitename[5];
-        int span;
-        int ncoeff;
-        double frequency_obs;
-        double binary_phase;
-        double binary_frequency;
-        long double coeff[32];
-    } T1Polyco;
 
     /* Set of TEMPO1-style polycos */
     typedef struct
@@ -126,7 +93,8 @@ extern "C" {
     void T2Predictor_Keep(T2Predictor*, unsigned nmjd, const long double* mjd);
     void T2Predictor_Destroy(T2Predictor *t2p);
 
-    /* I/O etc */
+    /* Initialize before reading. FRead replaces existing contents; a failed
+       parse leaves an empty predictor. Read leaves it unchanged if open fails. */
     int T2Predictor_Read(T2Predictor *t2p, char *fname);
     int T2Predictor_FRead(T2Predictor *t2p, FILE *f);
     void T2Predictor_Write(const T2Predictor *t2p, char *fname);
@@ -140,6 +108,74 @@ extern "C" {
     long double T2Predictor_GetStartFreq(T2Predictor *t2p); // MHz
     long double T2Predictor_GetEndFreq(T2Predictor *t2p);  // MHz
     T2PredictorKind T2Predictor_Kind(T2Predictor *t2p);
+
+    typedef struct {
+        int64_t day;
+        long double fraction;
+    } T2PredictorMJD;
+
+    typedef struct {
+        int64_t turns;
+        long double fraction;
+    } T2PredictorPhase;
+
+    typedef enum {
+        T2PREDICTOR_OK = 0,
+        T2PREDICTOR_INVALID = -1,
+        T2PREDICTOR_WRONG_KIND = -2,
+        T2PREDICTOR_OUT_OF_RANGE = -3,
+        T2PREDICTOR_OVERFLOW = -4,
+        T2PREDICTOR_NOMEM = -5,
+        T2PREDICTOR_IO_ERROR = -6
+    } T2PredictorStatus;
+
+    typedef struct {
+        T2PredictorMJD start, end, midpoint;
+        int time_coefficients, frequency_coefficients;
+        long double length_days, frequency_start, frequency_end;
+        long double dispersion_constant;
+    } T2PredictorSegmentInfo;
+
+    /*
+     * Split values represent day + fraction and turns + fraction. Outputs
+     * are normalized to 0 <= fraction < 1, including for negative values.
+     * Input fractions may be any finite value. Outputs are unchanged on error.
+     * Precision is limited by the configured internal longdouble type.
+     */
+    T2PredictorStatus T2Predictor_GetPhaseSplit(const T2Predictor *,
+            T2PredictorMJD, long double freq, T2PredictorPhase *);
+    T2PredictorStatus T2Predictor_GetFrequencySplit(const T2Predictor *,
+            T2PredictorMJD, long double freq, long double *);
+    T2PredictorStatus T2Predictor_GetStartMJDSplit(const T2Predictor *, T2PredictorMJD *);
+    T2PredictorStatus T2Predictor_GetEndMJDSplit(const T2Predictor *, T2PredictorMJD *);
+    T2PredictorStatus T2Predictor_KeepSplit(T2Predictor *, unsigned,
+            const T2PredictorMJD *);
+
+    /* Segment indexes become invalid after read, insert, keep or destroy.
+     * Indexed evaluations permit extrapolation, as the original segment
+     * functions do. Whole-predictor Chebyshev phase/frequency calls update
+     * ChebyModelSet_OutOfRange; indexed evaluations do not change it.
+     * Split T1 evaluations require the epoch to be within the nearest
+     * polyco's nominal span; the legacy calls allow extrapolation.
+     */
+    T2PredictorStatus T2Predictor_GetSegmentCount(const T2Predictor *, unsigned *);
+    T2PredictorStatus T2Predictor_GetSegmentInfo(const T2Predictor *, unsigned,
+            T2PredictorSegmentInfo *);
+    T2PredictorStatus T2Predictor_ValidateSegments(const T2Predictor *);
+    T2PredictorStatus T2Predictor_GetSegmentPhaseSplit(const T2Predictor *,
+            unsigned, T2PredictorMJD, long double freq, T2PredictorPhase *);
+    T2PredictorStatus T2Predictor_GetSegmentFrequencySplit(const T2Predictor *,
+            unsigned, T2PredictorMJD, long double freq, long double *);
+
+    /* The output frequency array has capacity elements. */
+    T2PredictorStatus T2Predictor_GetPlanSplit(const char *, T2PredictorMJD,
+            T2PredictorMJD, long double step, long double freq,
+            T2PredictorPhase *, int *, long double *, unsigned capacity);
+    T2PredictorStatus T2Predictor_GetPlanSplit_Ext(const char *, T2PredictorMJD,
+            T2PredictorMJD, long double step, long double freq,
+            char *psrname, size_t psrname_size, char *sitename, size_t sitename_size,
+            T2PredictorPhase *, int *,
+            long double *, unsigned capacity);
 
     /* Prediction */
     long double T2Predictor_GetPhase(const T2Predictor *t2p, long double mjd,

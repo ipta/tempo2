@@ -32,6 +32,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <limits.h>
 
 unsigned tempo2_verbose = 1;
 
@@ -52,6 +53,7 @@ T2Predictor_FRead(T2Predictor *t2p, FILE *f)
 {
     // determine the kind of file we're dealing with by trial and error
     long fpos = ftell(f);
+    T2Predictor_Destroy(t2p);
     if (ChebyModelSet_Read(&t2p->modelset.cheby, f)==0)
     {
         t2p->kind = Cheby;
@@ -144,12 +146,23 @@ T2Predictor_Insert(T2Predictor *into_t2p, const T2Predictor *from_t2p)
 
 void T2Predictor_Keep(T2Predictor* t2p, unsigned nmjd, const long double* mjd)
 {
+    unsigned i;
+    longdouble *converted;
     switch (t2p->kind)
     {
         default:
             break;
         case Cheby:
-            ChebyModelSet_Keep(&t2p->modelset.cheby, nmjd, mjd);
+            converted = nmjd ? malloc(nmjd * sizeof(*converted)) : NULL;
+            if (nmjd && !converted) {
+                fprintf(stderr, "T2Predictor_Keep: allocation failed\n");
+                return;
+            }
+            for (i = 0; i < nmjd; ++i)
+                converted[i] = (longdouble)mjd[i];
+            if (ChebyModelSet_Keep(&t2p->modelset.cheby, nmjd, converted) != 0)
+                fprintf(stderr, "T2Predictor_Keep: allocation failed\n");
+            free(converted);
             break;
         case T1:
             fprintf (stderr, "T2Predictor_Keep: not implemented for T1 polyco!\n");
@@ -346,9 +359,14 @@ int T2Predictor_GetPlan_Ext(char *filename,
         long double *pulse_frequencies)
 {
     int iseg, ret;
-    long double lastphase, phase, mjd, lastmjd;
+    longdouble lastphase, phase, mjd, lastmjd, start, end, interval, count;
     T2Predictor pred;
 
+    if (!filename || !phase0 || !nsegments || !pulse_frequencies ||
+            !isfinite(mjd_start) || !isfinite(mjd_end) || !isfinite(step) ||
+            !isfinite(freq) || freq <= 0 || step <= 0 || mjd_end <= mjd_start)
+        return -1;
+    T2Predictor_Init(&pred);
     if ((ret=T2Predictor_Read(&pred, filename)))
         return ret;
     if (psrname)
@@ -356,17 +374,36 @@ int T2Predictor_GetPlan_Ext(char *filename,
     if (sitename)
         strcpy(sitename, T2Predictor_GetSiteName(&pred));
 
-    *nsegments = (int)ceill((mjd_end-mjd_start)*86400.0L/step);
-    *phase0 = lastphase = T2Predictor_GetPhase(&pred, mjd_start, freq);
-    lastmjd = mjd_start;
+    start = (longdouble)mjd_start;
+    end = (longdouble)mjd_end;
+    interval = (longdouble)step / 86400;
+    count = -floorl(-(end-start)/interval);
+    if (count > INT_MAX || count < 1) {
+        T2Predictor_Destroy(&pred);
+        return -1;
+    }
+    *nsegments = (int)count;
+    if (pred.kind == Cheby)
+        lastphase = ChebyModelSet_GetPhase(&pred.modelset.cheby, start, (longdouble)freq);
+    else
+        lastphase = T1PolycoSet_GetPhase(&pred.modelset.t1, start, (longdouble)freq);
+    *phase0 = (long double)lastphase;
+    lastmjd = start;
 
     for (iseg=0; iseg < *nsegments; iseg++)
     {
-        mjd = mjd_start +(iseg+1)*step/86400.0L;
-        if (mjd > mjd_end)
-            mjd = mjd_end;
-        phase = T2Predictor_GetPhase(&pred, mjd, freq);
-        pulse_frequencies[iseg] = (phase-lastphase)/(mjd-lastmjd)/86400.0L;
+        mjd = start + (iseg+1)*interval;
+        if (mjd > end)
+            mjd = end;
+        if (mjd <= lastmjd) {
+            T2Predictor_Destroy(&pred);
+            return -1;
+        }
+        if (pred.kind == Cheby)
+            phase = ChebyModelSet_GetPhase(&pred.modelset.cheby, mjd, (longdouble)freq);
+        else
+            phase = T1PolycoSet_GetPhase(&pred.modelset.t1, mjd, (longdouble)freq);
+        pulse_frequencies[iseg] = (long double)((phase-lastphase)/(mjd-lastmjd)/86400);
         lastphase = phase;
         lastmjd = mjd;
     }
