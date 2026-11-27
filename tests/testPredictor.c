@@ -52,6 +52,49 @@ static void replace_predictor(T2Predictor *p, const char *text,
     assert(T2Predictor_Kind(p) == kind);
 }
 
+static void assert_invalid_ranges(const char *time_range,
+        const char *frequency_range, const char *dispersion)
+{
+    char text[512];
+    T2Predictor p;
+    FILE *f;
+    int length = snprintf(text, sizeof(text),
+            "ChebyModelSet 1 segments\nChebyModel BEGIN\n"
+            "PSRNAME J1234\nSITENAME test\n"
+            "TIME_RANGE %s\nFREQ_RANGE %s\nDISPERSION_CONSTANT %s\n"
+            "NCOEFF_TIME 2\nNCOEFF_FREQ 1\nCOEFFS 1\nCOEFFS 0\n"
+            "ChebyModel END\n",
+            time_range, frequency_range, dispersion);
+    assert(length > 0 && (size_t)length < sizeof(text));
+    T2Predictor_Init(&p);
+    f = text_file(text);
+    assert(T2Predictor_FRead(&p, f) == 0);
+    assert(fclose(f) == 0);
+    assert(T2Predictor_ValidateSegments(&p) == T2PREDICTOR_INVALID);
+    T2Predictor_Destroy(&p);
+}
+
+static void assert_invalid_polyco_numbers(const char *epoch,
+        const char *reference_phase, const char *frequency,
+        const char *coefficient)
+{
+    char text[512];
+    T2Predictor p;
+    FILE *f;
+    int length = snprintf(text, sizeof(text),
+            "TEMPO2: POLYCO TEMPO1 emulation\n"
+            "J1234\n20200101\n1200\n%s\n0\n0\n0\n%s\n%s\n"
+            "site\n1440\n2\n1400\n0\n0\n%s\n0\n",
+            epoch, reference_phase, frequency, coefficient);
+    assert(length > 0 && (size_t)length < sizeof(text));
+    T2Predictor_Init(&p);
+    f = text_file(text);
+    assert(T2Predictor_FRead(&p, f) != 0);
+    assert(fclose(f) == 0);
+    assert(T2Predictor_Kind(&p) == NonePredType);
+    T2Predictor_Destroy(&p);
+}
+
 int main(void)
 {
     T2Predictor p, copy, reread;
@@ -81,6 +124,13 @@ int main(void)
     assert(T2Predictor_GetStartMJDSplit(&p, &epoch) == T2PREDICTOR_OK && epoch.day == 60000);
     assert(T2Predictor_GetEndMJDSplit(&p, &epoch) == T2PREDICTOR_OK && epoch.day == 60003);
     assert(T2Predictor_ValidateSegments(&p) == T2PREDICTOR_OK);
+    assert_invalid_ranges("60001 60001", "1000 2000", "0");
+    assert_invalid_ranges("60002 60000", "1000 2000", "0");
+    assert_invalid_ranges("60000 60002", "1000 1000", "0");
+    assert_invalid_ranges("60000 60002", "2000 1000", "0");
+    assert_invalid_ranges("nan 60002", "1000 2000", "0");
+    assert_invalid_ranges("60000 60002", "1000 inf", "0");
+    assert_invalid_ranges("60000 60002", "1000 2000", "nan");
     epoch.day = 60001;
     epoch.fraction = 1e-14L;
     assert(T2Predictor_GetPhaseSplit(&p, epoch, 1400, &phase) == T2PREDICTOR_OK);
@@ -182,6 +232,14 @@ int main(void)
     f = text_file(t1_text);
     assert(T2Predictor_FRead(&p, f) == 0);
     fclose(f);
+    assert_invalid_polyco_numbers("60001junk", "1000000000.125", "1",
+            "0");
+    assert_invalid_polyco_numbers("60001", "1000000000.125junk", "1",
+            "0");
+    assert_invalid_polyco_numbers("60001", "1000000000.125", "1junk",
+            "0");
+    assert_invalid_polyco_numbers("60001", "1000000000.125", "1",
+            "0junk");
     epoch.day = 60001;
     epoch.fraction = 1e-14L;
     assert(T2Predictor_GetPhaseSplit(&p, epoch, 1400, &phase) == T2PREDICTOR_OK);

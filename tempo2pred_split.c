@@ -278,6 +278,14 @@ T2PredictorStatus T2Predictor_ValidateSegments(const T2Predictor *p)
         const ChebyModel *cm = &p->modelset.cheby.segments[i];
         const Cheby2D *polys[2] = { &cm->cheby, &cm->frequency_cheby };
         int j;
+        if (!finite_internal(cm->mjd_start) ||
+                !finite_internal(cm->mjd_end) ||
+                cm->mjd_start >= cm->mjd_end ||
+                !finite_internal(cm->freq_start) ||
+                !finite_internal(cm->freq_end) ||
+                cm->freq_start >= cm->freq_end ||
+                !finite_internal(cm->dispersion_constant))
+            return T2PREDICTOR_INVALID;
         for (j = 0; j < 2; ++j) {
             size_t k, count;
             if (polys[j]->nx <= 0 || polys[j]->ny <= 0 || !polys[j]->coeff ||

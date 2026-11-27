@@ -141,6 +141,21 @@ longdouble T1P_grabLongDouble(char *str, int istart, int nchar)
     return parse_longdouble(grabbed);
 }
 
+static int parse_polyco_number(const char *text, longdouble *value)
+{
+    char *end;
+
+#ifdef LONGDOUBLE_IS_FLOAT128
+    *value = strtoflt128(text, &end);
+#elif defined(LONGDOUBLE_IS_IEEE754)
+    *value = strtold(text, &end);
+#else
+    strtold(text, &end);
+    *value = parse_longdouble(text);
+#endif
+    return end != text && *end == '\0';
+}
+
 longdouble T1P_grabInt(char *str, int istart, int nchar)
 {
     char grabbed[64];
@@ -167,14 +182,16 @@ int T1Polyco_Read_NewFormat(T1Polyco *t1p, FILE *f)
         return -1;
     if (t1p->ncoeff < 2 || t1p->ncoeff > 32)
         return -1;
-    t1p->mjd_mid = parse_longdouble(mjd_mid);
-    t1p->reference_phase = parse_longdouble(reference_phase);
-    t1p->frequency_psr_0 = parse_longdouble(frequency_psr_0);
+    if (!parse_polyco_number(mjd_mid, &t1p->mjd_mid) ||
+            !parse_polyco_number(reference_phase, &t1p->reference_phase) ||
+            !parse_polyco_number(frequency_psr_0, &t1p->frequency_psr_0))
+        return -1;
 
     for (ic=0; ic < t1p->ncoeff; ic++){
         if (fscanf(f, "%127s", coeff)!=1)
             return -1;
-        t1p->coeff[ic] = parse_longdouble(coeff);
+        if (!parse_polyco_number(coeff, &t1p->coeff[ic]))
+            return -1;
     }
     fgets(junk, 1024, f); /* eat final newline */
     return 0;
@@ -317,4 +334,3 @@ void T1PolycoSet_Destroy(T1PolycoSet *t1ps)
     free(t1ps->segments);
   T1PolycoSet_Init(t1ps);
 }
-
