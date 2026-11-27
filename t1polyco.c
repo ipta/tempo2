@@ -24,7 +24,7 @@
  *    timing model.
  */
 
-#include "tempo2pred.h"
+#include "tempo2pred_int.h"
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
@@ -32,9 +32,9 @@
 
 /* Tempo1 polyco functions destined for tempo2pred library (C linkage) */
 
-long double T1Polyco_GetPhase(T1Polyco *t1p, long double mjd, long double freq)
+longdouble T1Polyco_GetPhase(const T1Polyco *t1p, longdouble mjd, longdouble freq)
 {
-    long double dt, arg, phase, spin_freq;
+    longdouble dt, arg, phase, spin_freq;
     int ic;
 
     /* Evaluate polynomial in phase and frequency */
@@ -54,15 +54,16 @@ long double T1Polyco_GetPhase(T1Polyco *t1p, long double mjd, long double freq)
         arg *= dt;
     }
     /* compute dispersion phase delay in observatory frame */
-    phase -= spin_freq * t1p->dm/2.41e-4L / (1.0L+t1p->doppler*1.0e-4L) * 
+    phase -= spin_freq * t1p->dm/longdouble(2.41e-4) /
+        (1.0L+t1p->doppler*longdouble(1.0e-4)) *
         ( 1.0L/(freq*freq) - 1.0L/(t1p->frequency_obs*t1p->frequency_obs));
     return phase;
 }
 
-long double T1Polyco_GetFrequency(T1Polyco *t1p, long double mjd, 
-        long double freq)
+longdouble T1Polyco_GetFrequency(const T1Polyco *t1p, longdouble mjd,
+        longdouble freq)
 {
-    long double dt, arg, spin_freq;
+    longdouble dt, arg, spin_freq;
     int ic;
 
     dt = (mjd-t1p->mjd_mid)*1440;
@@ -78,34 +79,41 @@ long double T1Polyco_GetFrequency(T1Polyco *t1p, long double mjd,
     return spin_freq;
 }
 
-void T1Polyco_Write(T1Polyco *t1p, FILE *fout)
+void T1Polyco_Write(const T1Polyco *t1p, FILE *fout)
 {
     int i;
 
-    if (t1p->psrname[0]=='J') 
-        fprintf(fout,"%-10.10s ",t1p->psrname+1);
-    else 
-        fprintf(fout,"%-10.10s ",t1p->psrname);
-    fprintf(fout,"%9.9s",t1p->date_string);
-    fprintf(fout,"%11.11s",t1p->utc_string);
-    fprintf(fout,"%20.11Lf",(long double)(t1p->mjd_mid));
-    fprintf(fout,"%21.6lf ",t1p->dm);
-    fprintf(fout,"%6.3lf",t1p->doppler);
-    fprintf(fout,"%7.3lf",t1p->log10rms);
-    fprintf(fout,"\n");
-    fprintf(fout,"%20.6Lf",(long double)t1p->reference_phase);
-    fprintf(fout,"%18.12Lf",(long double)t1p->frequency_psr_0);
-    fprintf(fout,"%5s",t1p->sitename);
-    fprintf(fout,"%5d",t1p->span);
-    fprintf(fout,"%5d",t1p->ncoeff);
-    fprintf(fout,"%10.3lf",t1p->frequency_obs);
-    fprintf(fout,"%16.14lf",t1p->binary_phase);
-    fprintf(fout,"\n");
-    for (i=0;i<t1p->ncoeff;i++)
-    {
-        fprintf(fout,"%25.17Le", (long double)t1p->coeff[i]);
-        if ((i+1)%3==0) fprintf(fout,"\n");
+    if (!t1p->extended_format) {
+        if (t1p->psrname[0]=='J')
+            fprintf(fout,"%-10.10s ",t1p->psrname+1);
+        else
+            fprintf(fout,"%-10.10s ",t1p->psrname);
+        fprintf(fout,"%9.9s%11.11s",t1p->date_string,t1p->utc_string);
+        ld_fprintf(fout,"%20.11Lf",t1p->mjd_mid);
+        fprintf(fout,"%21.6lf %6.3lf%7.3lf\n",t1p->dm,t1p->doppler,t1p->log10rms);
+        ld_fprintf(fout,"%20.6Lf%18.12Lf",t1p->reference_phase,t1p->frequency_psr_0);
+        fprintf(fout,"%5s%5d%5d%10.3lf%16.14lf\n",t1p->sitename,t1p->span,
+                t1p->ncoeff,t1p->frequency_obs,t1p->binary_phase);
+        for (i=0;i<t1p->ncoeff;i++) {
+            ld_fprintf(fout,"%25.17Le",t1p->coeff[i]);
+            if ((i+1)%3==0)
+                fprintf(fout,"\n");
+        }
+        if (t1p->ncoeff%3)
+            fprintf(fout,"\n");
+        return;
     }
+
+    fprintf(fout, "TEMPO2: POLYCO TEMPO1 emulation\n%s\n%s\n%s\n",
+            t1p->psrname, t1p->date_string, t1p->utc_string);
+    ld_fprintf(fout, "%.36Lg\n", t1p->mjd_mid);
+    fprintf(fout, "%.17g\n%.17g\n%.17g\n", t1p->dm, t1p->doppler, t1p->log10rms);
+    ld_fprintf(fout, "%.36Lg\n%.36Lg\n", t1p->reference_phase, t1p->frequency_psr_0);
+    fprintf(fout, "%s\n%d\n%d\n%.17g\n%.17g\n%.17g\n", t1p->sitename,
+            t1p->span, t1p->ncoeff, t1p->frequency_obs,
+            t1p->binary_phase, t1p->binary_frequency);
+    for (i=0;i<t1p->ncoeff;i++)
+        ld_fprintf(fout, "%.36Lg\n", t1p->coeff[i]);
 }
 
 /* helper functions for T1Polyco_Read */
@@ -118,10 +126,9 @@ void T1P_grabString(char *str, int istart, int nchar, char *out)
     sscanf(grabbed, "%s", out);// remove leading/trailing whitespace
 }
 
-long double T1P_grabLongDouble(char *str, int istart, int nchar)
+longdouble T1P_grabLongDouble(char *str, int istart, int nchar)
 {
     char grabbed[64];
-    long double res;
     char *c;
 
     T1P_grabString(str, istart, nchar, grabbed);
@@ -131,12 +138,25 @@ long double T1P_grabLongDouble(char *str, int istart, int nchar)
         if (*c == 'D')
             *c = 'e';
 
-    sscanf(grabbed, "%Lf", &res);
-
-    return (long double)res;
+    return parse_longdouble(grabbed);
 }
 
-long double T1P_grabInt(char *str, int istart, int nchar)
+static int parse_polyco_number(const char *text, longdouble *value)
+{
+    char *end;
+
+#ifdef LONGDOUBLE_IS_FLOAT128
+    *value = strtoflt128(text, &end);
+#elif defined(LONGDOUBLE_IS_IEEE754)
+    *value = strtold(text, &end);
+#else
+    strtold(text, &end);
+    *value = parse_longdouble(text);
+#endif
+    return end != text && *end == '\0';
+}
+
+longdouble T1P_grabInt(char *str, int istart, int nchar)
 {
     char grabbed[64];
     int res;
@@ -150,25 +170,28 @@ long double T1P_grabInt(char *str, int istart, int nchar)
 int T1Polyco_Read_NewFormat(T1Polyco *t1p, FILE *f)
 {
     int ic;
-    char junk[1024];
-    long double mjd_mid, reference_phase,frequency_psr_0,coeff;
+    char junk[1024], mjd_mid[128], reference_phase[128], frequency_psr_0[128], coeff[128];
 
-    if (fscanf(f, "%s %s %s %Lf %lf %lf %lf %Lf %Lf %s %d %d %lf %lf %lf",
+    if (fscanf(f, "%63s %9s %12s %127s %lf %lf %lf %127s %127s %4s %d %d %lf %lf %lf",
                 t1p->psrname, t1p->date_string, t1p->utc_string,
-                &mjd_mid, &t1p->dm, &t1p->doppler, &t1p->log10rms,
-                &reference_phase, &frequency_psr_0,
+                mjd_mid, &t1p->dm, &t1p->doppler, &t1p->log10rms,
+                reference_phase, frequency_psr_0,
                 t1p->sitename, &t1p->span, &t1p->ncoeff,
                 &t1p->frequency_obs, &t1p->binary_phase, &t1p->binary_frequency)
             != 15)
         return -1;
-    t1p->mjd_mid = mjd_mid;
-    t1p->reference_phase = reference_phase;
-    t1p->frequency_psr_0 = frequency_psr_0;
+    if (t1p->ncoeff < 2 || t1p->ncoeff > 32)
+        return -1;
+    if (!parse_polyco_number(mjd_mid, &t1p->mjd_mid) ||
+            !parse_polyco_number(reference_phase, &t1p->reference_phase) ||
+            !parse_polyco_number(frequency_psr_0, &t1p->frequency_psr_0))
+        return -1;
 
     for (ic=0; ic < t1p->ncoeff; ic++){
-        if (fscanf(f, "%Lf", &coeff)!=1)
+        if (fscanf(f, "%127s", coeff)!=1)
             return -1;
-        t1p->coeff[ic] = coeff;
+        if (!parse_polyco_number(coeff, &t1p->coeff[ic]))
+            return -1;
     }
     fgets(junk, 1024, f); /* eat final newline */
     return 0;
@@ -183,7 +206,12 @@ int T1Polyco_Read(T1Polyco *t1p, FILE *f)
         return -1;
 
     if (!strncasecmp(line, "TEMPO2:", 6))
+    {
+        t1p->extended_format = 1;
         return T1Polyco_Read_NewFormat(t1p, f);
+    }
+
+    t1p->extended_format = 0;
 
     T1P_grabString(line, 0, 11, t1p->psrname);
     T1P_grabString(line, 11, 9, t1p->date_string);
@@ -200,6 +228,8 @@ int T1Polyco_Read(T1Polyco *t1p, FILE *f)
     T1P_grabString(line, 38, 5, t1p->sitename);
     t1p->span = T1P_grabInt(line, 43, 5);
     t1p->ncoeff = T1P_grabInt(line, 48, 5);
+    if (t1p->ncoeff < 2 || t1p->ncoeff > 32)
+        return -1;
     t1p->frequency_obs = T1P_grabLongDouble(line, 53, 10);
     t1p->binary_phase = T1P_grabLongDouble(line, 63, 7);
     t1p->binary_frequency = T1P_grabLongDouble(line, 70, 9);
@@ -218,14 +248,14 @@ int T1Polyco_Read(T1Polyco *t1p, FILE *f)
     return 0;
 }
 
-T1Polyco *T1PolycoSet_GetNearest(T1PolycoSet *t1ps, long double mjd)
+T1Polyco *T1PolycoSet_GetNearest(const T1PolycoSet *t1ps, longdouble mjd)
 {
     int inearest=0;
-    long double best_offset=1e6, offset;
+    longdouble best_offset=1e6, offset;
     int iseg;
     for (iseg=0; iseg < t1ps->nsegments ; iseg++)
     {
-        offset = fabs(t1ps->segments[iseg].mjd_mid - mjd);
+        offset = fabsl(t1ps->segments[iseg].mjd_mid - mjd);
         if (offset < best_offset)
         {
             inearest = iseg;
@@ -236,17 +266,17 @@ T1Polyco *T1PolycoSet_GetNearest(T1PolycoSet *t1ps, long double mjd)
     return &t1ps->segments[inearest];
 }
 
-long double T1PolycoSet_GetPhase(T1PolycoSet *t1ps, long double mjd, long double freq)
+longdouble T1PolycoSet_GetPhase(const T1PolycoSet *t1ps, longdouble mjd, longdouble freq)
 {
     return T1Polyco_GetPhase(T1PolycoSet_GetNearest(t1ps, mjd), mjd, freq);
 }
 
-long double T1PolycoSet_GetFrequency(T1PolycoSet *t1ps, long double mjd, long double freq)
+longdouble T1PolycoSet_GetFrequency(const T1PolycoSet *t1ps, longdouble mjd, longdouble freq)
 {
     return T1Polyco_GetFrequency(T1PolycoSet_GetNearest(t1ps, mjd), mjd, freq);
 }
 
-void T1PolycoSet_Write(T1PolycoSet *t1ps, FILE *f)
+void T1PolycoSet_Write(const T1PolycoSet *t1ps, FILE *f)
 {
     int iseg;
     for (iseg=0; iseg < t1ps->nsegments ; iseg++)
@@ -259,15 +289,25 @@ int T1PolycoSet_Read(T1PolycoSet *t1ps, FILE *f)
     int iseg=0;
 
     t1ps->segments = (T1Polyco *)malloc(nallocated*sizeof(T1Polyco));
+    t1ps->nsegments = 0;
+    if (!t1ps->segments)
+        return -1;
 
     while (T1Polyco_Read(&t1ps->segments[iseg], f)==0)
     {
         iseg++;
         if (iseg >= nallocated)
         {
+            T1Polyco *segments;
             nallocated += 5;
-            t1ps->segments = (T1Polyco *)realloc(t1ps->segments,
+            segments = (T1Polyco *)realloc(t1ps->segments,
                     nallocated*sizeof(T1Polyco));
+            if (!segments) {
+                free(t1ps->segments);
+                t1ps->segments = NULL;
+                return -1;
+            }
+            t1ps->segments = segments;
         }
     }
     t1ps->nsegments = iseg;
@@ -275,7 +315,11 @@ int T1PolycoSet_Read(T1PolycoSet *t1ps, FILE *f)
     if (t1ps->nsegments > 0)
         return 0;
     else
+    {
+        free(t1ps->segments);
+        t1ps->segments = NULL;
         return -1;
+    }
 }
 
 void T1PolycoSet_Init(T1PolycoSet *t1ps)
@@ -290,4 +334,3 @@ void T1PolycoSet_Destroy(T1PolycoSet *t1ps)
     free(t1ps->segments);
   T1PolycoSet_Init(t1ps);
 }
-

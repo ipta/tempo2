@@ -16,10 +16,21 @@ void T2Predictor_GetFrequency_array_ld(const T2Predictor *t2p, long double *mjd,
 }
 
 double get_FractionalPhase(const T2Predictor *t2p, int intmjd, double fracmjd,long double freq) {
+#if defined(T2PREDICTOR_API_VERSION) && T2PREDICTOR_API_VERSION >= 2
+    T2PredictorMJD mjd = { intmjd, fracmjd };
+    T2PredictorPhase phase;
+    T2PredictorStatus status = T2Predictor_GetPhaseSplit(t2p, mjd, freq, &phase);
+    if (status != T2PREDICTOR_OK) {
+        fprintf(stderr, "get_FractionalPhase: predictor error %d\n", (int)status);
+        return NAN;
+    }
+    return (double)phase.fraction;
+#else
     long double mjd = (long double) intmjd + (long double) fracmjd;
     long double phase = T2Predictor_GetPhase(t2p,mjd,freq);
     long double floorphase = floorl(phase);
     return (double)(phase-floorphase);
+#endif
 }
 
 

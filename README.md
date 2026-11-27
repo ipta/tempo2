@@ -66,6 +66,66 @@ Tempo2 requires the following:
 
 Plugins may have other requirements, notably PGPLOT.
 
+3.1 Predictor precision and external callers
+--------------------------------------------
+The installed `tempo2pred.h` provides a C interface usable from C or C++
+without including the internal precision backend. Existing `T2Predictor_*`
+calls remain available; their `long double` arguments and results are limited
+by the caller's C type. Rebuild callers against the new library and header.
+Initialize each predictor with `T2Predictor_Init` before reading or copying,
+and release it with `T2Predictor_Destroy`. Reading from an opened stream
+replaces its previous contents; a parse failure leaves it empty.
+The layouts of individual Chebyshev and polyco segments are private and are
+not binary-compatible with earlier releases.
+
+On systems where C `long double` is too narrow, configure Tempo2 with
+`--enable-float128` and a compiler and libquadmath that support `__float128`.
+The shared predictor library links its backend; applications using its public
+header need not include quadmath or use `__float128`. Static linking also
+requires the backend and C++ runtime libraries. A split API cannot recover
+precision if Tempo2 itself was built with a narrow internal type.
+
+Check `T2PREDICTOR_API_VERSION >= 2` (guarded by `defined`) for the new API.
+Supply `T2PredictorMJD` as an integral MJD day and a fractional number of days,
+without first combining them. `T2Predictor_GetPhaseSplit` returns integral
+turns and a fractional turn, while `T2Predictor_GetFrequencySplit` returns
+frequency. Output fractions are in [0, 1), including for negative values.
+Check the `T2PredictorStatus` result: outputs are not changed on failure.
+`T2Predictor_KeepSplit` accepts an array of split epochs; the split plan
+functions require an output array and its capacity. Split start and end MJD
+accessors are also available. Split T1 evaluations reject epochs outside the
+nearest polyco's nominal span; the legacy T1 functions permit extrapolation.
+
+Chebyshev consumers can use `T2Predictor_GetSegmentCount`,
+`T2Predictor_GetSegmentInfo`, `T2Predictor_ValidateSegments`, and the indexed
+split prediction functions instead of accessing coefficient or segment
+fields. Indexed evaluation permits extrapolation; whole-predictor evaluation
+selects a segment and updates the legacy `ChebyModelSet_OutOfRange` flag.
+Segment indexes must be reacquired after read, insert, keep, or destroy.
+T1 polycos retain their input format when written. The existing extended
+`TEMPO2:` format preserves internal precision; fixed-width polycos remain
+limited by their field widths.
+
+PSRCHIVE migration handoff:
+
+ - Current PSRCHIVE accesses predictor structs and `tempo2pred_int.h` directly
+   and will not compile unchanged. Keep those paths only as a fallback when
+   the version macro is absent or less than 2; use the public header otherwise.
+ - Convert `MJD::intday()`, seconds and fractional seconds to `T2PredictorMJD`
+   without first adding them to the day. Use split phase and frequency calls
+   for `phase()` and `frequency()`, and an array of split epochs for `keep()`.
+   Construct `Pulsar::Phase` from `turns` and `fraction`; negative outputs use
+   floor, not truncation. Translate nonzero statuses into PSRCHIVE errors.
+ - Replace direct segment and coefficient access with `GetSegmentCount`,
+   `GetSegmentInfo`, `ValidateSegments`, `GetPSRName` and `GetSiteName`.
+   Segment info supplies dimensions, split bounds/midpoint, length, observing
+   frequency bounds and dispersion constant.
+ - For inverse phase, construct the reference epoch from the split midpoint;
+   use indexed split phase and frequency calls for the reference, endpoints
+   and subsequent evaluations. These calls intentionally extrapolate the
+   selected segment, preserving the existing inverse-phase buffer behavior.
+   Do not retain segment indexes across predictor mutations.
+
 5. Plugins
 ----------
 The bootstrap command will create suitible makefiles for the default set of
